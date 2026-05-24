@@ -54,4 +54,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "logger", "cdx_client", "warc_downloader", "warc_extractor", "database", "build_database"]
+known-first-party = ["config", "logger", "cdx_client", "warc_downloader", "warc_extractor", "database", "build_database", "settings"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
