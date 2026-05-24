@@ -1,0 +1,51 @@
+## Summary
+
+Added salience metrics calculation and export functionality using Polars (not pandas).
+
+## New Features
+
+### 1. Salience Metrics Module (salience_metrics.py)
+- get_articles_per_day() - Daily article counts
+- get_articles_per_source() - Article counts by source  
+- get_articles_per_source_per_day() - Daily counts per source
+- get_total_statistics() - Overall database statistics
+
+### 2. Export CLI (export_salience.py)
+```
+uv run export_salience.py --output-dir ./exports
+```
+
+Exports three CSV files:
+- articles_per_day.csv - Time series of article counts
+- articles_per_source.csv - Distribution across sources
+- articles_per_source_per_day.csv - Granular daily breakdown
+
+### 3. Uses Polars
+- Fast, memory-efficient data processing
+- No pandas dependency
+- Easy export to CSV for Excel/pandas analysis
+
+## Testing
+- 54 tests passing (added 4 new tests for salience metrics)
+- All linting and type checks pass
+
+## Usage Example
+
+After building the database:
+```
+uv run export_salience.py
+```
+
+This creates an exports/ directory with:
+- Daily time series (for plotting salience over time)
+- Source breakdown (for understanding coverage)
+- Detailed daily-by-source matrix
+
+## Next Steps
+
+You can now:
+1. Build the database: uv run build_database.py
+2. Export metrics: uv run export_salience.py
+3. Analyze in Excel or pandas
+
+The CSV files are ready for stakeholder review.
