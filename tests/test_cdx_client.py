@@ -1,6 +1,8 @@
 """Unit tests for CDXClient."""
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from cdx_client import CDXClient
 
 

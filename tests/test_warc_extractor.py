@@ -1,6 +1,8 @@
 """Unit tests for WARCExtractor."""
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from warc_extractor import WARCExtractor
 
 
@@ -43,9 +45,8 @@ class TestWARCExtractor:
         """Extract article should return None for non-HTML content."""
         from warcio import StatusAndHeaders
         mock_record = MagicMock()
-        mock_record.headers = StatusAndHeaders('WARC/1.0', [])
-        mock_record.headers.status_and_headers = [('Content-Type', 'text/plain')]
-        
+        mock_record.headers = StatusAndHeaders('WARC/1.0', [('Content-Type', 'text/plain')])
+
         headers = {'WARC-Target-URI': 'https://example.com', 'WARC-Date': '2020-04-01T00:00:00.000Z'}
         result = extractor._extract_article(mock_record, headers)
         assert result is None

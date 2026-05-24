@@ -1,7 +1,9 @@
 """Unit tests for WARCDownloader."""
 import os
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
+
 from warc_downloader import WARCDownloader
 
 
@@ -33,12 +35,12 @@ class TestWARCDownloader:
         cache_path = os.path.join(downloader.cache_dir, 'CC-MAIN-2020-16_test.warc.gz')
         with open(cache_path, 'w') as f:
             f.write('test')
-        
+
         # Create meta file
         meta_path = f"{cache_path}.meta"
         with open(meta_path, 'w') as f:
             f.write(filename)
-        
+
         result = downloader.download(filename)
         assert result is not None
         assert result == cache_path
@@ -51,15 +53,15 @@ class TestWARCDownloader:
         """Download should convert filename to cache path correctly."""
         filename = 'CC-MAIN-2020-16/test.warc.gz'
         expected_cache = os.path.join(downloader.cache_dir, 'CC-MAIN-2020-16_test.warc.gz')
-        
+
         # Create the file and meta
         with open(expected_cache, 'w') as f:
             f.write('test')
-        
+
         meta_path = f"{expected_cache}.meta"
         with open(meta_path, 'w') as f:
             f.write(filename)
-        
+
         result = downloader.download(filename)
         assert result is not None
         assert os.path.basename(result) == 'CC-MAIN-2020-16_test.warc.gz'
@@ -78,12 +80,12 @@ class TestWARCDownloader:
         cache_path = os.path.join(downloader.cache_dir, 'test.warc.gz')
         with open(cache_path, 'w') as f:
             f.write('test')
-        
+
         # Create meta file
         meta_path = f"{cache_path}.meta"
         with open(meta_path, 'w') as f:
             f.write('test.warc.gz')
-        
+
         result = downloader._is_valid_cache(cache_path, 'test.warc.gz')
         assert result is True
 
@@ -98,7 +100,7 @@ class TestWARCDownloader:
         cache_path = os.path.join(downloader.cache_dir, 'no_meta.warc.gz')
         with open(cache_path, 'w') as f:
             f.write('test')
-        
+
         result = downloader._is_valid_cache(cache_path, 'no_meta.warc.gz')
         assert result is False
 
@@ -107,10 +109,10 @@ class TestWARCDownloader:
         cache_path = os.path.join(downloader.cache_dir, 'wrong_meta.warc.gz')
         with open(cache_path, 'w') as f:
             f.write('test')
-        
+
         meta_path = f"{cache_path}.meta"
         with open(meta_path, 'w') as f:
             f.write('different.warc.gz')
-        
+
         result = downloader._is_valid_cache(cache_path, 'test.warc.gz')
         assert result is False

@@ -1,8 +1,8 @@
 """Unit tests for database operations."""
-import pytest
-import sqlite3
-import tempfile
 from unittest.mock import MagicMock
+
+import pytest
+
 from database import NewsDatabase
 
 
@@ -47,7 +47,7 @@ class TestNewsDatabase:
         )
         assert result1 is True
         assert db.get_count() == 1
-        
+
         # Second insert with same URL should update (INSERT OR REPLACE)
         result2 = db.insert_article(
             url='https://example.com/article',

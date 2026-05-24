@@ -1,8 +1,8 @@
 """Unit tests for COVID NZ News Database Builder."""
 import os
+
 import pytest
-import tempfile
-from unittest.mock import MagicMock
+
 from settings import settings
 
 

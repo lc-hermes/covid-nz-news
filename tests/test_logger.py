@@ -1,6 +1,6 @@
 """Unit tests for logger module."""
-import pytest
 import logging
+
 from logger import setup_logging
 
 
