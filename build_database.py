@@ -3,157 +3,178 @@
 This script builds a local SQLite database of New Zealand news articles
 about COVID-19 from Common Crawl web archive.
 
+Configuration is managed via settings.py - simply import and modify.
+
 Usage:
     uv run build_database.py
-    uv run build_database.py --crawl-id CC-MAIN-2020-16 --domain "*.nzherald.co.nz/"
-    uv run build_database.py --max-warc-files 5 --log-level DEBUG
 
-Environment Variables:
-    See .env.example for available configuration options.
+To customize:
+    1. Edit settings.py or create custom_settings.py
+    2. Import your settings: from custom_settings import settings
+    3. Run the script
 """
-import argparse
 import sys
+from datetime import datetime
 
 from cdx_client import CDXClient
-from config import Config
 from database import NewsDatabase
 from logger import setup_logging
+from settings import settings
 from warc_downloader import WARCDownloader
 from warc_extractor import WARCExtractor
 
 
-def build_database(args, config: Config, logger) -> int:
+def build_database(logger) -> int:
     """
     Build the news database.
 
     Args:
-        args: Command line arguments
-        config: Configuration object
         logger: Logger instance
 
     Returns:
         Exit code (0 for success, 1 for error)
     """
-    logger.info("=" * 60)
+    logger.info("=" * 70)
     logger.info("NZ COVID News Database Builder")
-    logger.info("=" * 60)
-    logger.info(f"Crawl ID: {config.crawl_id}")
-    logger.info(f"Domain: {config.domain_pattern}")
-    logger.info(f"Max WARC files: {config.max_warc_files}")
-    logger.info(f"Keywords: {', '.join(config.covid_keywords)}")
-    logger.info(f"Allowed languages: {', '.join(config.allowed_languages)}")
-    logger.info("=" * 60)
+    logger.info("=" * 70)
+    logger.info(f"Configuration: {settings}")
+    logger.info(f"News sources: {len(settings.news_sources.domains)} domains")
+    logger.info(f"Crawl IDs: {len(settings.crawls.crawl_ids)}")
+    logger.info(f"Keywords: {len(settings.news_sources.keywords)} terms")
+    logger.info("=" * 70)
 
     # Initialize components
-    db = NewsDatabase(config.db_path, logger)
+    db = NewsDatabase(settings.database.path, logger)
     cdx_client = CDXClient(
-        timeout=config.cdx_timeout,
-        retry_attempts=config.retry_attempts,
-        retry_delay=config.retry_delay,
+        timeout=settings.network.cdx_timeout,
+        retry_attempts=settings.network.retry_attempts,
+        retry_delay=settings.network.retry_delay,
         logger=logger
     )
     downloader = WARCDownloader(
-        cache_dir=config.cache_dir,
-        timeout=config.warc_timeout,
-        retry_attempts=config.retry_attempts,
-        retry_delay=config.retry_delay,
+        cache_dir=settings.cache.directory,
+        timeout=settings.network.warc_timeout,
+        retry_attempts=settings.network.retry_attempts,
+        retry_delay=settings.network.retry_delay,
         logger=logger
     )
     extractor = WARCExtractor(
-        min_text_length=config.min_text_length,
-        max_content_length=config.max_content_length,
-        allowed_languages=config.allowed_languages,
+        min_text_length=settings.extraction.min_text_length,
+        max_content_length=settings.extraction.max_content_length,
+        allowed_languages=settings.extraction.allowed_languages,
         logger=logger
     )
 
     # Connect to database
     db.connect()
 
+    total_urls_found = 0
+    total_covid_urls = 0
+    total_articles = 0
+    processed_crawls = 0
+
     try:
-        # Query CDX index
-        logger.info("\n[1/4] Querying CDX index...")
-        urls = cdx_client.query_index(config.crawl_id, config.domain_pattern)
+        # Process each crawl
+        for crawl_idx, crawl_id in enumerate(settings.crawls.crawl_ids, 1):
+            logger.info(f"\n{'=' * 70}")
+            logger.info(f"Crawl {crawl_idx}/{len(settings.crawls.crawl_ids)}: {crawl_id}")
+            logger.info("=" * 70)
 
-        if not urls:
-            logger.error("No URLs found in CDX index!")
-            return 1
+            # Process each domain
+            for domain_idx, domain_pattern in enumerate(settings.news_sources.domains, 1):
+                logger.info(f"\n  [{domain_idx}/{len(settings.news_sources.domains)}] Domain: {domain_pattern}")
 
-        # Filter for COVID keywords
-        logger.info("\n[2/4] Filtering for COVID-related URLs...")
-        covid_urls = cdx_client.filter_keywords(urls, config.covid_keywords)
+                # Query CDX index
+                logger.info("    [1/3] Querying CDX index...")
+                urls = cdx_client.query_index(crawl_id, domain_pattern)
 
-        if not covid_urls:
-            logger.error("No COVID-related URLs found!")
-            return 1
+                if not urls:
+                    logger.warning(f"    No URLs found for {domain_pattern}")
+                    continue
 
-        # Group by WARC file
-        warc_files = cdx_client.group_by_warc(covid_urls)
+                total_urls_found += len(urls)
+                logger.info(f"    Found {len(urls):,} URLs")
 
-        # Process WARC files
-        logger.info("\n[3/4] Processing WARC files...")
-        processed = 0
-        skipped = 0
-        failed_urls = 0
+                # Filter for COVID keywords
+                logger.info("    [2/3] Filtering for COVID-related URLs...")
+                covid_urls = cdx_client.filter_keywords(urls, settings.news_sources.keywords)
 
-        for i, (filename, url_entries) in enumerate(list(warc_files.items())[:config.max_warc_files]):
-            logger.info(f"\n  [{i+1}/{min(config.max_warc_files, len(warc_files))}] {filename[:50]}...")
-            logger.info(f"    Contains {len(url_entries)} COVID-related URLs")
+                if not covid_urls:
+                    logger.warning(f"    No COVID-related URLs found for {domain_pattern}")
+                    continue
 
-            # Download WARC file
-            warc_path = downloader.download(filename)
+                total_covid_urls += len(covid_urls)
+                logger.info(f"    Found {len(covid_urls):,} COVID-related URLs")
 
-            if not warc_path:
-                logger.error(f"    Failed to download {filename}")
-                failed_urls += len(url_entries)
-                continue
+                # Group by WARC file
+                warc_files = cdx_client.group_by_warc(covid_urls)
+                logger.info(f"    Spanning {len(warc_files)} WARC files")
 
-            # Extract articles
-            target_urls = {e['url'] for e in url_entries if e.get('url')}
-            articles = extractor.extract_from_file(warc_path, target_urls)
+                # Process WARC files
+                logger.info("    [3/3] Processing WARC files...")
 
-            logger.info(f"    Extracted {len(articles)} articles")
+                # Limit if configured
+                max_files = settings.crawls.max_warc_files_per_crawl
+                if max_files:
+                    warc_files = dict(list(warc_files.items())[:max_files])
+                    logger.info(f"    Limited to {max_files} WARC files (testing mode)")
 
-            # Save to database
-            for article in articles:
-                url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
+                for file_idx, (filename, url_entries) in enumerate(warc_files.items(), 1):
+                    logger.info(f"      [{file_idx}/{len(warc_files)}] {filename[:50]}...")
+                    logger.info(f"        Contains {len(url_entries)} COVID-related URLs")
 
-                if db.insert_article(
-                    article['url'],
-                    article['title'],
-                    article['content'],
-                    article['source_domain'],
-                    config.crawl_id,
-                    url_entry.get('timestamp', ''),
-                    article['language'],
-                    article['status_code']
-                ):
-                    processed += 1
-                else:
-                    failed_urls += 1
+                    # Download WARC file
+                    warc_path = downloader.download(filename)
 
-            skipped += len(url_entries) - len(articles)
+                    if not warc_path:
+                        logger.error(f"        Failed to download {filename}")
+                        continue
+
+                    # Extract articles
+                    target_urls = {e['url'] for e in url_entries if e.get('url')}
+                    articles = extractor.extract_from_file(warc_path, target_urls)
+
+                    logger.info(f"        Extracted {len(articles)} articles")
+
+                    # Save to database
+                    for article in articles:
+                        url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
+
+                        if db.insert_article(
+                            article['url'],
+                            article['title'],
+                            article['content'],
+                            article['source_domain'],
+                            crawl_id,
+                            url_entry.get('timestamp', ''),
+                            article['language'],
+                            article['status_code']
+                        ):
+                            total_articles += 1
+
+            processed_crawls += 1
 
         # Summary
-        logger.info("\n[4/4] Summary")
-        logger.info("=" * 60)
-        logger.info(f"Total URLs found: {len(urls):,}")
-        logger.info(f"COVID-related URLs: {len(covid_urls):,}")
-        logger.info(f"WARC files processed: {min(config.max_warc_files, len(warc_files))}")
-        logger.info(f"Articles extracted: {processed:,}")
-        logger.info(f"Articles skipped: {skipped:,}")
-        logger.info(f"Failed URLs: {failed_urls:,}")
+        logger.info(f"\n{'=' * 70}")
+        logger.info("BUILD COMPLETE")
+        logger.info("=" * 70)
+        logger.info(f"Crawls processed: {processed_crawls}/{len(settings.crawls.crawl_ids)}")
+        logger.info(f"Total URLs found: {total_urls_found:,}")
+        logger.info(f"Covid-related URLs: {total_covid_urls:,}")
+        logger.info(f"Articles extracted: {total_articles:,}")
         logger.info(f"Total in database: {db.get_count():,}")
 
-        # Statistics
-        logger.info("\nArticles by source:")
+        # Statistics by source
+        logger.info("\nArticles by news source:")
         for source, count in db.get_stats_by_source():
             logger.info(f"  {source}: {count:,}")
 
+        # Statistics by language
         logger.info("\nArticles by language:")
         for lang, count in db.get_stats_by_language():
             logger.info(f"  {lang}: {count:,}")
 
-        # Sample
+        # Sample recent article
         if db.get_count() > 0:
             logger.info("\nSample recent article:")
             recent = db.get_recent_articles(limit=1)
@@ -161,10 +182,12 @@ def build_database(args, config: Config, logger) -> int:
                 article = recent[0]
                 logger.info(f"  Title: {article['title']}")
                 logger.info(f"  URL: {article['url']}")
+                logger.info(f"  Source: {article['source_domain']}")
                 logger.info(f"  Content preview: {article['content'][:200]}...")
 
-        logger.info("=" * 60)
-        logger.info("Database build complete!")
+        logger.info("=" * 70)
+        logger.info(f"Database saved to: {settings.database.path}")
+        logger.info(f"Build completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         return 0
 
     except KeyboardInterrupt:
@@ -181,88 +204,15 @@ def build_database(args, config: Config, logger) -> int:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description='Build a local SQLite database of NZ news articles about COVID-19 from Common Crawl',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  uv run build_database.py
-  uv run build_database.py --crawl-id CC-MAIN-2020-16
-  uv run build_database.py --max-warc-files 5 --log-level DEBUG
-
-Environment:
-  Copy .env.example to .env and configure settings there.
-  Command line arguments override environment variables.
-        """
-    )
-    parser.add_argument(
-        '--crawl-id',
-        help='Common Crawl ID (e.g., CC-MAIN-2020-16)'
-    )
-    parser.add_argument(
-        '--domain',
-        help='Domain pattern (e.g., *.nzherald.co.nz/)'
-    )
-    parser.add_argument(
-        '--max-warc-files',
-        type=int,
-        help='Maximum number of WARC files to process'
-    )
-    parser.add_argument(
-        '--db-path',
-        help='Path to SQLite database'
-    )
-    parser.add_argument(
-        '--cache-dir',
-        help='Directory for caching WARC files'
-    )
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-        default=None,
-        help='Logging level'
-    )
-    parser.add_argument(
-        '--keywords',
-        help='Comma-separated COVID keywords'
-    )
-
-    args = parser.parse_args()
-
-    # Load configuration
-    try:
-        config = Config()
-
-        # Override with command line args
-        if args.crawl_id:
-            config.crawl_id = args.crawl_id
-        if args.domain:
-            config.domain_pattern = args.domain
-        if args.max_warc_files:
-            config.max_warc_files = args.max_warc_files
-        if args.db_path:
-            config.db_path = args.db_path
-        if args.cache_dir:
-            config.cache_dir = args.cache_dir
-        if args.keywords:
-            config.covid_keywords = args.keywords.split(',')
-
-        # Set log level from args or config
-        log_level = args.log_level or config.log_level
-
-    except ValueError as e:
-        print(f"Configuration error: {e}")
-        sys.exit(1)
-
     # Set up logging
     logger = setup_logging(
-        log_level=log_level,
-        log_file=config.log_file,
+        log_level=settings.logging.level,
+        log_file=settings.logging.file,
         console_output=True
     )
 
     # Run
-    exit_code = build_database(args, config, logger)
+    exit_code = build_database(logger)
     sys.exit(exit_code)
 
 
