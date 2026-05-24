@@ -13,6 +13,7 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
     "langdetect>=1.0.9",
+    "polars>=0.19.0",
 ]
 
 [project.optional-dependencies]
@@ -54,7 +55,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "logger", "cdx_client", "warc_downloader", "warc_extractor", "database", "build_database", "settings"]
+known-first-party = ["config", "logger", "cdx_client", "warc_downloader", "warc_extractor", "database", "build_database", "settings", "salience_metrics", "export_salience"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
