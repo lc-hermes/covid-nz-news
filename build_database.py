@@ -1,304 +1,269 @@
+"""COVID NZ News Database Builder - Main Entry Point.
+
+This script builds a local SQLite database of New Zealand news articles
+about COVID-19 from Common Crawl web archive.
+
+Usage:
+    uv run build_database.py
+    uv run build_database.py --crawl-id CC-MAIN-2020-16 --domain "*.nzherald.co.nz/"
+    uv run build_database.py --max-warc-files 5 --log-level DEBUG
+
+Environment Variables:
+    See .env.example for available configuration options.
 """
-Build NZ COVID news database with proper WARC parsing.
-"""
-import urllib.request
-import json
-import sqlite3
-import gzip
-import io
-import os
-from warcio import ArchiveIterator
-from bs4 import BeautifulSoup
-import langdetect
+import argparse
+import sys
 
-# Configuration
-DB_PATH = 'covid_nz_news.db'
-CACHE_DIR = 'warc_cache'
-COVID_KEYWORDS = ["covid", "coronavirus", "virus", "lockdown", "vaccine", "quarantine"]
+from cdx_client import CDXClient
+from config import Config
+from database import NewsDatabase
+from logger import setup_logging
+from warc_downloader import WARCDownloader
+from warc_extractor import WARCExtractor
 
 
-def create_database():
-    """Create SQLite database with schema."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS articles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT UNIQUE,
-            title TEXT,
-            content TEXT,
-            source_domain TEXT,
-            crawl_id TEXT,
-            timestamp TEXT,
-            language TEXT,
-            status_code TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_url ON articles(url)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_source ON articles(source_domain)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON articles(timestamp)')
-    
-    conn.commit()
-    return conn
+def build_database(args, config: Config, logger) -> int:
+    """
+    Build the news database.
 
+    Args:
+        args: Command line arguments
+        config: Configuration object
+        logger: Logger instance
 
-def query_cdx_index(crawl_id, domain):
-    """Query Common Crawl CDX index for URLs matching domain."""
-    query_url = f"https://index.commoncrawl.org/{crawl_id}-index?url={domain}&output=json"
-    
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    logger.info("=" * 60)
+    logger.info("NZ COVID News Database Builder")
+    logger.info("=" * 60)
+    logger.info(f"Crawl ID: {config.crawl_id}")
+    logger.info(f"Domain: {config.domain_pattern}")
+    logger.info(f"Max WARC files: {config.max_warc_files}")
+    logger.info(f"Keywords: {', '.join(config.covid_keywords)}")
+    logger.info(f"Allowed languages: {', '.join(config.allowed_languages)}")
+    logger.info("=" * 60)
+
+    # Initialize components
+    db = NewsDatabase(config.db_path, logger)
+    cdx_client = CDXClient(
+        timeout=config.cdx_timeout,
+        retry_attempts=config.retry_attempts,
+        retry_delay=config.retry_delay,
+        logger=logger
+    )
+    downloader = WARCDownloader(
+        cache_dir=config.cache_dir,
+        timeout=config.warc_timeout,
+        retry_attempts=config.retry_attempts,
+        retry_delay=config.retry_delay,
+        logger=logger
+    )
+    extractor = WARCExtractor(
+        min_text_length=config.min_text_length,
+        max_content_length=config.max_content_length,
+        allowed_languages=config.allowed_languages,
+        logger=logger
+    )
+
+    # Connect to database
+    db.connect()
+
     try:
-        with urllib.request.urlopen(query_url, timeout=60) as response:
-            data = response.read().decode('utf-8')
-            return [json.loads(line) for line in data.strip().split('\n') if line]
+        # Query CDX index
+        logger.info("\n[1/4] Querying CDX index...")
+        urls = cdx_client.query_index(config.crawl_id, config.domain_pattern)
+
+        if not urls:
+            logger.error("No URLs found in CDX index!")
+            return 1
+
+        # Filter for COVID keywords
+        logger.info("\n[2/4] Filtering for COVID-related URLs...")
+        covid_urls = cdx_client.filter_keywords(urls, config.covid_keywords)
+
+        if not covid_urls:
+            logger.error("No COVID-related URLs found!")
+            return 1
+
+        # Group by WARC file
+        warc_files = cdx_client.group_by_warc(covid_urls)
+
+        # Process WARC files
+        logger.info("\n[3/4] Processing WARC files...")
+        processed = 0
+        skipped = 0
+        failed_urls = 0
+
+        for i, (filename, url_entries) in enumerate(list(warc_files.items())[:config.max_warc_files]):
+            logger.info(f"\n  [{i+1}/{min(config.max_warc_files, len(warc_files))}] {filename[:50]}...")
+            logger.info(f"    Contains {len(url_entries)} COVID-related URLs")
+
+            # Download WARC file
+            warc_path = downloader.download(filename)
+
+            if not warc_path:
+                logger.error(f"    Failed to download {filename}")
+                failed_urls += len(url_entries)
+                continue
+
+            # Extract articles
+            target_urls = {e['url'] for e in url_entries if e.get('url')}
+            articles = extractor.extract_from_file(warc_path, target_urls)
+
+            logger.info(f"    Extracted {len(articles)} articles")
+
+            # Save to database
+            for article in articles:
+                url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
+
+                if db.insert_article(
+                    article['url'],
+                    article['title'],
+                    article['content'],
+                    article['source_domain'],
+                    config.crawl_id,
+                    url_entry.get('timestamp', ''),
+                    article['language'],
+                    article['status_code']
+                ):
+                    processed += 1
+                else:
+                    failed_urls += 1
+
+            skipped += len(url_entries) - len(articles)
+
+        # Summary
+        logger.info("\n[4/4] Summary")
+        logger.info("=" * 60)
+        logger.info(f"Total URLs found: {len(urls):,}")
+        logger.info(f"COVID-related URLs: {len(covid_urls):,}")
+        logger.info(f"WARC files processed: {min(config.max_warc_files, len(warc_files))}")
+        logger.info(f"Articles extracted: {processed:,}")
+        logger.info(f"Articles skipped: {skipped:,}")
+        logger.info(f"Failed URLs: {failed_urls:,}")
+        logger.info(f"Total in database: {db.get_count():,}")
+
+        # Statistics
+        logger.info("\nArticles by source:")
+        for source, count in db.get_stats_by_source():
+            logger.info(f"  {source}: {count:,}")
+
+        logger.info("\nArticles by language:")
+        for lang, count in db.get_stats_by_language():
+            logger.info(f"  {lang}: {count:,}")
+
+        # Sample
+        if db.get_count() > 0:
+            logger.info("\nSample recent article:")
+            recent = db.get_recent_articles(limit=1)
+            if recent:
+                article = recent[0]
+                logger.info(f"  Title: {article['title']}")
+                logger.info(f"  URL: {article['url']}")
+                logger.info(f"  Content preview: {article['content'][:200]}...")
+
+        logger.info("=" * 60)
+        logger.info("Database build complete!")
+        return 0
+
+    except KeyboardInterrupt:
+        logger.info("\n\nInterrupted by user")
+        return 130
     except Exception as e:
-        print(f"  Error querying {domain}: {type(e).__name__}")
-        return []
-
-
-def filter_covid_urls(urls):
-    """Filter URLs that contain COVID-related keywords."""
-    covid_urls = []
-    for url_entry in urls:
-        url = url_entry.get('url', '').lower()
-        if any(keyword in url for keyword in COVID_KEYWORDS):
-            covid_urls.append(url_entry)
-    return covid_urls
-
-
-def download_warc_file(filename):
-    """Download WARC file and cache it locally."""
-    cache_path = os.path.join(CACHE_DIR, filename.replace('/', '_'))
-    
-    # Check cache
-    if os.path.exists(cache_path):
-        print(f"  Using cached {filename[:60]}...")
-        return cache_path
-    
-    warc_url = f"https://data.commoncrawl.org/{filename}"
-    print(f"  Downloading {warc_url[:80]}...")
-    
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    
-    with urllib.request.urlopen(warc_url, timeout=300) as response:
-        warc_data = response.read()
-    
-    with open(cache_path, 'wb') as f:
-        f.write(warc_data)
-    
-    print(f"  Downloaded {len(warc_data)} bytes, cached to {cache_path[:60]}...")
-    return cache_path
-
-
-def extract_text_from_html(html_content):
-    """Extract main article text from HTML."""
-    soup = BeautifulSoup(html_content, 'lxml')
-    
-    # Remove script and style elements
-    for elem in soup(['script', 'style', 'nav', 'footer', 'header']):
-        elem.decompose()
-    
-    # Try to find main content
-    main = soup.find('main')
-    if main:
-        text = main.get_text(separator=' ', strip=True)
-        if len(text) > 100:
-            return text
-    
-    # Try article tag
-    article = soup.find('article')
-    if article:
-        text = article.get_text(separator=' ', strip=True)
-        if len(text) > 100:
-            return text
-    
-    # Try to find the longest text block
-    paragraphs = soup.find_all(['p', 'div'])
-    texts = [p.get_text(separator=' ', strip=True) for p in paragraphs]
-    texts = [t for t in texts if len(t) > 100]
-    
-    if texts:
-        return max(texts, key=len)
-    
-    # Fallback: get all text
-    return soup.get_text(separator=' ', strip=True)
-
-
-def extract_articles_from_warc(warc_path, target_urls):
-    """Extract articles from a WARC file for a list of target URLs."""
-    extracted = []
-    
-    print(f"  Extracting from {warc_path[:60]}...")
-    
-    with open(warc_path, 'rb') as f:
-        with gzip.GzipFile(fileobj=f) as gz:
-            warc_data = gz.read()
-    
-    print(f"  Decompressed to {len(warc_data)} bytes")
-    
-    # Create URL lookup
-    url_set = set(target_urls)
-    
-    reader = ArchiveIterator(io.BytesIO(warc_data))
-    
-    for record in reader:
-        # Get headers as list of tuples
-        headers = dict(record.rec_headers.headers)
-        
-        record_type = headers.get('WARC-Type', '')
-        record_url = headers.get('WARC-Target-URI', '')
-        
-        # Only process response records for our target URLs
-        if record_type == 'response' and record_url in url_set:
-            payload = record.raw_stream.read()
-            content = payload.decode('utf-8', errors='ignore')
-            
-            # Extract title
-            soup = BeautifulSoup(content, 'lxml')
-            title_tag = soup.find('title')
-            title = title_tag.get_text(strip=True) if title_tag else ''
-            
-            # Extract text
-            text = extract_text_from_html(content)
-            
-            # Detect language
-            try:
-                lang = langdetect.detect(text[:10000]) if len(text) > 100 else 'en'
-            except:
-                lang = 'unknown'
-            
-            extracted.append({
-                'url': record_url,
-                'title': title,
-                'content': text,
-                'language': lang,
-            })
-    
-    return extracted
-
-
-def save_article(conn, article, crawl_id, domain, timestamp, status):
-    """Save article to database."""
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            INSERT OR REPLACE INTO articles 
-            (url, title, content, source_domain, crawl_id, timestamp, language, status_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            article['url'],
-            article['title'],
-            article['content'][:50000],
-            domain,
-            crawl_id,
-            timestamp,
-            article.get('language', ''),
-            status
-        ))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"  Error saving article: {e}")
-        return False
+        logger.error(f"\nFatal error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    finally:
+        db.close()
 
 
 def main():
-    print("=" * 60)
-    print("NZ COVID News Database Builder (with WARC caching)")
-    print("=" * 60)
-    print()
-    
-    # Create database and cache directory
-    print("Creating database...")
-    conn = create_database()
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    
-    # Configuration
-    test_crawl = "CC-MAIN-2020-16"
-    test_domain = "*.nzherald.co.nz/"
-    
-    print(f"Processing {test_crawl} and {test_domain}")
-    print()
-    
-    # Query CDX index
-    print("Querying CDX index...")
-    urls = query_cdx_index(test_crawl, test_domain)
-    print(f"Found {len(urls)} total URLs")
-    
-    # Filter for COVID
-    covid_urls = filter_covid_urls(urls)
-    print(f"Found {len(covid_urls)} COVID-related URLs")
-    
-    if not covid_urls:
-        print("No COVID-related URLs found!")
-        return
-    
-    # Group URLs by WARC file
-    warc_files = {}
-    for url_entry in covid_urls:
-        filename = url_entry.get('filename', '')
-        if filename:
-            if filename not in warc_files:
-                warc_files[filename] = []
-            warc_files[filename].append(url_entry)
-    
-    print(f"\nGrouped into {len(warc_files)} unique WARC files")
-    
-    # Process first 2 WARC files for testing
-    processed = 0
-    skipped = 0
-    
-    for i, (filename, url_entries) in enumerate(list(warc_files.items())[:2]):
-        print(f"\n[{i+1}/{min(2, len(warc_files))}] Processing {filename[:60]}...")
-        print(f"  Contains {len(url_entries)} COVID-related URLs")
-        
-        # Download WARC file
-        warc_path = download_warc_file(filename)
-        
-        # Extract articles
-        target_urls = [e.get('url') for e in url_entries]
-        articles = extract_articles_from_warc(warc_path, target_urls)
-        
-        print(f"  Extracted {len(articles)} articles")
-        
-        # Save to database
-        for article in articles:
-            # Find original URL entry for metadata
-            url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
-            
-            # Filter by language
-            if article['language'] == 'en':
-                if save_article(conn, article, test_crawl, test_domain,
-                              url_entry.get('timestamp', ''), url_entry.get('status', '')):
-                    print(f"    Saved: {article['title'][:60]}...")
-                    processed += 1
-            else:
-                print(f"    Skipped (language: {article['language']})")
-                skipped += 1
-    
-    print(f"\n" + "=" * 60)
-    print(f"Processed {processed} articles successfully")
-    print(f"Skipped {skipped} non-English articles")
-    
-    # Query database
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM articles')
-    count = cursor.fetchone()[0]
-    print(f"Total articles in database: {count}")
-    
-    # Show sample
-    if count > 0:
-        cursor.execute('SELECT title, content FROM articles LIMIT 1')
-        row = cursor.fetchone()
-        print(f"\nSample article:")
-        print(f"  Title: {row[0]}")
-        print(f"  Content preview: {row[1][:200]}...")
-    
-    conn.close()
-    print("=" * 60)
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description='Build a local SQLite database of NZ news articles about COVID-19 from Common Crawl',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  uv run build_database.py
+  uv run build_database.py --crawl-id CC-MAIN-2020-16
+  uv run build_database.py --max-warc-files 5 --log-level DEBUG
+
+Environment:
+  Copy .env.example to .env and configure settings there.
+  Command line arguments override environment variables.
+        """
+    )
+    parser.add_argument(
+        '--crawl-id',
+        help='Common Crawl ID (e.g., CC-MAIN-2020-16)'
+    )
+    parser.add_argument(
+        '--domain',
+        help='Domain pattern (e.g., *.nzherald.co.nz/)'
+    )
+    parser.add_argument(
+        '--max-warc-files',
+        type=int,
+        help='Maximum number of WARC files to process'
+    )
+    parser.add_argument(
+        '--db-path',
+        help='Path to SQLite database'
+    )
+    parser.add_argument(
+        '--cache-dir',
+        help='Directory for caching WARC files'
+    )
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default=None,
+        help='Logging level'
+    )
+    parser.add_argument(
+        '--keywords',
+        help='Comma-separated COVID keywords'
+    )
+
+    args = parser.parse_args()
+
+    # Load configuration
+    try:
+        config = Config()
+
+        # Override with command line args
+        if args.crawl_id:
+            config.crawl_id = args.crawl_id
+        if args.domain:
+            config.domain_pattern = args.domain
+        if args.max_warc_files:
+            config.max_warc_files = args.max_warc_files
+        if args.db_path:
+            config.db_path = args.db_path
+        if args.cache_dir:
+            config.cache_dir = args.cache_dir
+        if args.keywords:
+            config.covid_keywords = args.keywords.split(',')
+
+        # Set log level from args or config
+        log_level = args.log_level or config.log_level
+
+    except ValueError as e:
+        print(f"Configuration error: {e}")
+        sys.exit(1)
+
+    # Set up logging
+    logger = setup_logging(
+        log_level=log_level,
+        log_file=config.log_file,
+        console_output=True
+    )
+
+    # Run
+    exit_code = build_database(args, config, logger)
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':
