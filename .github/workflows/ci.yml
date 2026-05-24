@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor-production-ready]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.local/bin/env
+      
+      - name: Install dependencies
+        run: |
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+      
+      - name: Run ruff
+        run: |
+          source .venv/bin/activate
+          uv run ruff check .
+      
+      - name: Run ty
+        run: |
+          source .venv/bin/activate
+          uv run ty check .
