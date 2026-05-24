@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "covid-nz-news"
-version = "0.1.0"
+version = "0.2.0"
 description = "Build a local SQLite database of NZ news articles about COVID-19 from Common Crawl"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,11 +18,40 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "ruff>=0.1.0",
+    "ty>=0.0.1",
 ]
+
+[project.scripts]
+covid-nz-news = "build_database:main"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
     "warc_cache/",
     "*.db",
     "*.json",
+    "*.log",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+]
+ignore = [
+    "E501", # line too long (ruff formats)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "logger", "cdx_client", "warc_downloader", "warc_extractor", "database", "build_database"]
