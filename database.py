@@ -192,3 +192,15 @@ class NewsDatabase:
             params=(search_param, search_param),
             limit=limit
         )
+
+    def query_all_articles(self) -> List[Dict]:
+        """
+        Query all articles from the database.
+
+        Returns:
+            List of all article dictionaries
+        """
+        cursor = self._get_cursor()
+        cursor.execute('SELECT url, title, content, source_domain, language, status_code, timestamp FROM articles')
+        columns = ['url', 'title', 'content', 'source_domain', 'language', 'status_code', 'crawl_date']
+        return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
