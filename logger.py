@@ -22,6 +22,12 @@ def setup_logging(
     """
     # Create logger
     logger = logging.getLogger('covid_nz_news')
+
+    # Validate log level
+    valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+    if log_level.upper() not in valid_levels:
+        log_level = 'INFO'
+
     logger.setLevel(getattr(logging, log_level.upper()))
 
     # Clear existing handlers

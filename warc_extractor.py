@@ -127,6 +127,7 @@ class WARCExtractor:
                 'url': url,
                 'title': title,
                 'content': text[:self.max_content_length],
+                'source_domain': self._extract_source_domain(url),
                 'language': lang,
                 'status_code': headers.get('WARC-Status-Code', ''),
             }
@@ -183,3 +184,24 @@ class WARCExtractor:
 
         # Last resort: get all text
         return soup.get_text(separator=' ', strip=True)
+
+    def _extract_source_domain(self, url: str) -> str:
+        """
+        Extract domain from URL.
+
+        Args:
+            url: Full URL
+
+        Returns:
+            Domain without subdomain (e.g., 'example.co.nz' from 'https://www.example.co.nz/path')
+        """
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            domain = parsed.netloc or ''
+            # Remove www. prefix
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            return domain
+        except Exception:
+            return ''
