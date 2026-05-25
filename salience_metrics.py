@@ -1,10 +1,8 @@
-"""Salience metrics calculation for COVID NZ News database.
+"""Progress tracking for COVID NZ News database building.
 
-Computes article counts over time to measure COVID salience in NZ media.
-Uses Polars for efficient data processing.
+Saves checkpoint state to allow resuming interrupted database builds.
 """
 import logging
-from datetime import datetime
 from typing import Optional
 
 import polars as pl
@@ -106,6 +104,7 @@ class SalienceMetrics:
         earliest = df['date'].min()
         latest = df['date'].max()
 
+        from datetime import datetime
         date_earliest = datetime.strptime(str(earliest), '%Y-%m-%d') if earliest else None
         date_latest = datetime.strptime(str(latest), '%Y-%m-%d') if latest else None
 

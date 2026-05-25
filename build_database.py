@@ -6,30 +6,89 @@ about COVID-19 from Common Crawl web archive.
 Configuration is managed via settings.py - simply import and modify.
 
 Usage:
-    uv run build_database.py
+    uv run build_database.py [--resume]
 
 To customize:
     1. Edit settings.py or create custom_settings.py
     2. Import your settings: from custom_settings import settings
     3. Run the script
 """
+import argparse
 import sys
 from datetime import datetime
 
 from cdx_client import CDXClient
 from database import NewsDatabase
 from logger import setup_logging
+from progress import ProgressManager
 from settings import settings
 from warc_downloader import WARCDownloader
 from warc_extractor import WARCExtractor
 
 
-def build_database(logger) -> int:
+def extract_publish_date(soup) -> str:
+    """
+    Extract publish date from HTML metadata.
+
+    Args:
+        soup: BeautifulSoup parsed HTML
+
+    Returns:
+        ISO format date string or empty string if not found
+    """
+    # Try various meta tags for publish date
+    date_tags = [
+        'article:published_time',
+        'article:published_time',
+        'og:article:published_time',
+        'datePublished',
+        'publish_date',
+        'pubdate',
+    ]
+
+    for tag_name in date_tags:
+        # Try og:title style
+        meta = soup.find('meta', property=tag_name)
+        if meta and meta.get('content'):
+            content = meta['content']
+            # Try to parse and return ISO format
+            try:
+                dt = datetime.fromisoformat(content.replace('Z', '+00:00'))
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                pass
+
+        # Try name attribute
+        meta = soup.find('meta', attrs={'name': tag_name})
+        if meta and meta.get('content'):
+            content = meta['content']
+            try:
+                dt = datetime.fromisoformat(content.replace('Z', '+00:00'))
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                pass
+
+    # Try time tag
+    time_tag = soup.find('time', attrs={'datetime': True})
+    if time_tag:
+        datetime_str = time_tag.get('datetime')
+        if datetime_str:
+            try:
+                dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                pass
+
+    return ''
+
+
+def build_database(logger, resume: bool = False) -> int:
     """
     Build the news database.
 
     Args:
         logger: Logger instance
+        resume: Whether to resume from checkpoint
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -41,7 +100,20 @@ def build_database(logger) -> int:
     logger.info(f"News sources: {len(settings.news_sources.domains)} domains")
     logger.info(f"Crawl IDs: {len(settings.crawls.crawl_ids)}")
     logger.info(f"Keywords: {len(settings.news_sources.keywords)} terms")
+    logger.info(f"Resume mode: {resume}")
     logger.info("=" * 70)
+
+    # Initialize progress manager
+    progress_manager = ProgressManager(
+        checkpoint_file=settings.database.checkpoint_file,
+        logger=logger
+    )
+
+    # Load or clear checkpoint based on resume flag
+    if resume:
+        progress_manager.load()
+    else:
+        progress_manager.clear()
 
     # Initialize components
     db = NewsDatabase(settings.database.path, logger)
@@ -68,97 +140,122 @@ def build_database(logger) -> int:
     # Connect to database
     db.connect()
 
+    # Get remaining work
+    remaining_work = progress_manager.get_remaining_work(
+        settings.crawls.crawl_ids,
+        settings.news_sources.domains
+    )
+
+    if not remaining_work:
+        logger.info("All work already completed!")
+        db.close()
+        return 0
+
+    logger.info(f"Remaining work: {len(remaining_work)} crawl-domain pairs")
+
     total_urls_found = 0
     total_covid_urls = 0
     total_articles = 0
-    processed_crawls = 0
+    processed_pairs = 0
 
     try:
-        # Process each crawl
-        for crawl_idx, crawl_id in enumerate(settings.crawls.crawl_ids, 1):
+        # Process remaining crawl-domain pairs
+        for crawl_id, domain_pattern in remaining_work:
             logger.info(f"\n{'=' * 70}")
-            logger.info(f"Crawl {crawl_idx}/{len(settings.crawls.crawl_ids)}: {crawl_id}")
+            logger.info(f"Processing: {crawl_id} + {domain_pattern}")
             logger.info("=" * 70)
 
-            # Process each domain
-            for domain_idx, domain_pattern in enumerate(settings.news_sources.domains, 1):
-                logger.info(f"\n  [{domain_idx}/{len(settings.news_sources.domains)}] Domain: {domain_pattern}")
+            # Query CDX index
+            logger.info("  [1/4] Querying CDX index...")
+            urls = cdx_client.query_index(crawl_id, domain_pattern)
 
-                # Query CDX index
-                logger.info("    [1/3] Querying CDX index...")
-                urls = cdx_client.query_index(crawl_id, domain_pattern)
+            if not urls:
+                logger.warning(f"  No URLs found for {domain_pattern}")
+                progress_manager.mark_completed(crawl_id, domain_pattern, 0)
+                continue
 
-                if not urls:
-                    logger.warning(f"    No URLs found for {domain_pattern}")
+            total_urls_found += len(urls)
+            logger.info(f"  Found {len(urls):,} URLs")
+
+            # Filter for COVID keywords
+            logger.info("  [2/4] Filtering for COVID-related URLs...")
+            covid_urls = cdx_client.filter_keywords(urls, settings.news_sources.keywords)
+
+            if not covid_urls:
+                logger.warning(f"  No COVID-related URLs found for {domain_pattern}")
+                progress_manager.mark_completed(crawl_id, domain_pattern, 0)
+                continue
+
+            total_covid_urls += len(covid_urls)
+            logger.info(f"  Found {len(covid_urls):,} COVID-related URLs")
+
+            # Group by WARC file
+            warc_files = cdx_client.group_by_warc(covid_urls)
+            logger.info(f"  Spanning {len(warc_files)} WARC files")
+
+            # Process WARC files
+            logger.info("  [3/4] Processing WARC files...")
+
+            # Limit if configured
+            max_files = settings.crawls.max_warc_files_per_crawl
+            if max_files:
+                warc_files = dict(list(warc_files.items())[:max_files])
+                logger.info(f"  Limited to {max_files} WARC files (testing mode)")
+
+            articles_inserted = 0
+            for file_idx, (filename, url_entries) in enumerate(warc_files.items(), 1):
+                logger.info(f"    [{file_idx}/{len(warc_files)}] {filename[:50]}...")
+                logger.info(f"      Contains {len(url_entries)} COVID-related URLs")
+
+                # Download WARC file
+                warc_path = downloader.download(filename)
+
+                if not warc_path:
+                    logger.error(f"      Failed to download {filename}")
                     continue
 
-                total_urls_found += len(urls)
-                logger.info(f"    Found {len(urls):,} URLs")
+                # Extract articles
+                target_urls = {e['url'] for e in url_entries if e.get('url')}
+                articles = extractor.extract_from_file(warc_path, target_urls)
 
-                # Filter for COVID keywords
-                logger.info("    [2/3] Filtering for COVID-related URLs...")
-                covid_urls = cdx_client.filter_keywords(urls, settings.news_sources.keywords)
+                logger.info(f"      Extracted {len(articles)} articles")
 
-                if not covid_urls:
-                    logger.warning(f"    No COVID-related URLs found for {domain_pattern}")
-                    continue
+                # Save to database
+                for article in articles:
+                    url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
 
-                total_covid_urls += len(covid_urls)
-                logger.info(f"    Found {len(covid_urls):,} COVID-related URLs")
+                    # Try to extract publish date from HTML
+                    publish_date = ''
+                    if article.get('html_content'):
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(article['html_content'], 'lxml')
+                        publish_date = extract_publish_date(soup)
 
-                # Group by WARC file
-                warc_files = cdx_client.group_by_warc(covid_urls)
-                logger.info(f"    Spanning {len(warc_files)} WARC files")
+                    if db.insert_article(
+                        article['url'],
+                        article['title'],
+                        article['content'],
+                        article['source_domain'],
+                        crawl_id,
+                        url_entry.get('timestamp', ''),
+                        article['language'],
+                        article['status_code'],
+                        publish_date
+                    ):
+                        total_articles += 1
+                        articles_inserted += 1
 
-                # Process WARC files
-                logger.info("    [3/3] Processing WARC files...")
+            # Save checkpoint after each crawl-domain pair
+            progress_manager.mark_completed(crawl_id, domain_pattern, articles_inserted)
+            processed_pairs += 1
 
-                # Limit if configured
-                max_files = settings.crawls.max_warc_files_per_crawl
-                if max_files:
-                    warc_files = dict(list(warc_files.items())[:max_files])
-                    logger.info(f"    Limited to {max_files} WARC files (testing mode)")
-
-                for file_idx, (filename, url_entries) in enumerate(warc_files.items(), 1):
-                    logger.info(f"      [{file_idx}/{len(warc_files)}] {filename[:50]}...")
-                    logger.info(f"        Contains {len(url_entries)} COVID-related URLs")
-
-                    # Download WARC file
-                    warc_path = downloader.download(filename)
-
-                    if not warc_path:
-                        logger.error(f"        Failed to download {filename}")
-                        continue
-
-                    # Extract articles
-                    target_urls = {e['url'] for e in url_entries if e.get('url')}
-                    articles = extractor.extract_from_file(warc_path, target_urls)
-
-                    logger.info(f"        Extracted {len(articles)} articles")
-
-                    # Save to database
-                    for article in articles:
-                        url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
-
-                        if db.insert_article(
-                            article['url'],
-                            article['title'],
-                            article['content'],
-                            article['source_domain'],
-                            crawl_id,
-                            url_entry.get('timestamp', ''),
-                            article['language'],
-                            article['status_code']
-                        ):
-                            total_articles += 1
-
-            processed_crawls += 1
+            logger.info(f"  Completed: {processed_pairs}/{len(remaining_work)} pairs")
 
         # Summary
         logger.info(f"\n{'=' * 70}")
         logger.info("BUILD COMPLETE")
         logger.info("=" * 70)
-        logger.info(f"Crawls processed: {processed_crawls}/{len(settings.crawls.crawl_ids)}")
+        logger.info(f"Crawl-domain pairs processed: {processed_pairs}")
         logger.info(f"Total URLs found: {total_urls_found:,}")
         logger.info(f"Covid-related URLs: {total_covid_urls:,}")
         logger.info(f"Articles extracted: {total_articles:,}")
@@ -204,6 +301,16 @@ def build_database(logger) -> int:
 
 def main():
     """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description='Build COVID NZ News database from Common Crawl'
+    )
+    parser.add_argument(
+        '--resume',
+        action='store_true',
+        help='Resume from checkpoint (skip already processed crawl-domain pairs)'
+    )
+    args = parser.parse_args()
+
     # Set up logging
     logger = setup_logging(
         log_level=settings.logging.level,
@@ -212,7 +319,7 @@ def main():
     )
 
     # Run
-    exit_code = build_database(logger)
+    exit_code = build_database(logger, resume=args.resume)
     sys.exit(exit_code)
 
 

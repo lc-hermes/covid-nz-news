@@ -16,6 +16,7 @@ from typing import List
 class DatabaseConfig:
     """Database configuration."""
     path: str = 'covid_nz_news.db'
+    checkpoint_file: str = 'build_progress.json'
 
 
 @dataclass

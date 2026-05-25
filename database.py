@@ -67,6 +67,7 @@ class NewsDatabase:
                 timestamp TEXT,
                 language TEXT,
                 status_code TEXT,
+                publish_date TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -76,6 +77,7 @@ class NewsDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_source ON articles(source_domain)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON articles(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_language ON articles(language)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_publish_date ON articles(publish_date)')
 
         if self.conn:
             self.conn.commit()
@@ -90,7 +92,8 @@ class NewsDatabase:
         crawl_id: str,
         timestamp: str,
         language: str,
-        status_code: str
+        status_code: str,
+        publish_date: str = ''
     ) -> bool:
         """
         Insert or replace an article.
@@ -106,8 +109,8 @@ class NewsDatabase:
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO articles
-                (url, title, content, source_domain, crawl_id, timestamp, language, status_code)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (url, title, content, source_domain, crawl_id, timestamp, language, status_code, publish_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 url,
                 title,
@@ -116,7 +119,8 @@ class NewsDatabase:
                 crawl_id,
                 timestamp,
                 language,
-                status_code
+                status_code,
+                publish_date
             ))
             if self.conn:
                 self.conn.commit()
