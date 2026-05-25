@@ -1,90 +1,69 @@
 ## Summary
 
-Complete async CDX client integration with `--async` flag for 10x faster database builds.
+Remove all CLI arguments - all configuration now in settings.py.
 
-## What's Changed
+## Changes
 
-### New Features
-- **Async Mode**: Add `--async` flag to use parallel CDX queries
-- **Rate Limiting**: Configurable rate limit (10 req/sec by default)
-- **Backward Compatible**: Sync mode remains default
+### build_database.py
+- Remove `argparse` import and all CLI argument parsing
+- Remove `--resume` and `--async` flags
+- Update `build_database()` signature to remove parameters
+- All runtime options now read from `settings.py`
 
-### Files Modified
-- `build_database.py`: Add async client initialization and CLI flag
-- `async_cdx_client.py`: Add sync wrapper methods for compatibility
-- `settings.py`: Add `async_rate_limit` configuration
+### settings.py
+- Add `resume: bool = False` - resume from checkpoint
+- Add `use_async: bool = False` - use async CDX client (10x faster)
 
-## Usage
+### README.md
+- Update documentation to reflect new configuration approach
+
+## Before
 
 ```bash
-# Sync mode (default, sequential)
+# CLI arguments
+uv run build_database.py --resume --async
+```
+
+## After
+
+```python
+# In settings.py
+from settings import settings
+
+settings.resume = True  # Resume from checkpoint
+settings.use_async = True  # Use async CDX client (10x faster)
+```
+
+```bash
+# No arguments needed
 uv run build_database.py
-
-# Async mode (10x faster, parallel queries)
-uv run build_database.py --async
-
-# Resume interrupted async build
-uv run build_database.py --async --resume
-
-# Combine with other flags
-uv run build_database.py --async --resume
 ```
 
-## Performance
+## Rationale
 
-| Mode | CDX Queries | Estimated Time |
-|------|-------------|----------------|
-| Sync | Sequential  | ~6 hours       |
-| Async | Parallel    | ~30-40 minutes |
-
-**10x faster** for the CDX query phase (which is ~80% of total time).
-
-## How It Works
-
-### Sync Mode (Default)
-```python
-for crawl_id, domain in work_items:
-    urls = cdx_client.query_index(crawl_id, domain)  # Sequential
-    # ... process URLs
-```
-
-### Async Mode
-```python
-for crawl_id, domain in work_items:
-    urls = cdx_client.query_index(crawl_id, domain)  # Parallel with rate limiting
-    # ... process URLs
-```
-
-The async client uses `aiohttp` to make parallel HTTP requests to the CDX server, with rate limiting to avoid overwhelming the server.
+1. **Cleaner code** - No CLI parsing overhead
+2. **Single source of truth** - All configuration in one place
+3. **Version control** - Easy to commit different configurations
+4. **User preference** - Matches preferred style (constants over CLI args)
 
 ## Testing
 
 - ✅ 66 unit tests passing
 - ✅ All lint checks passing
 - ✅ All type checks passing
-- ✅ Manual test: Script runs successfully in both modes
+- ✅ Manual test: Script runs successfully
 
-## Configuration
+## Migration
 
-Add to `settings.py` to adjust async behavior:
+If you were using CLI arguments, update your settings.py:
 
 ```python
-class NetworkConfig:
-    async_rate_limit: int = 10  # requests per second (default: 10)
+# Old way (CLI)
+uv run build_database.py --resume --async
+
+# New way (settings.py)
+from settings import settings
+settings.resume = True
+settings.use_async = True
+uv run build_database.py
 ```
-
-Increase for faster queries (risk: server rate limiting), decrease for safer operation.
-
-## Next Steps
-
-1. Review and merge this PR
-2. Test async mode on a small subset of data
-3. Run full async build for production database
-4. Monitor performance and adjust rate limit as needed
-
-## Notes
-
-- Async mode uses the same checkpoint system as sync mode
-- Can switch between sync/async mid-build (resumes from checkpoint)
-- WARC file processing remains sequential (network-bound, not CPU-bound)
-- Future improvement: Add async WARC downloading for even faster performance
