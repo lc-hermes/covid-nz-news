@@ -1,13 +1,12 @@
 """Logging configuration for COVID NZ News database builder."""
+
 import logging
 import os
 from typing import Optional
 
 
 def setup_logging(
-    log_level: str = 'INFO',
-    log_file: Optional[str] = None,
-    console_output: bool = True
+    log_level: str = "INFO", log_file: Optional[str] = None, console_output: bool = True
 ) -> logging.Logger:
     """
     Set up logging configuration.
@@ -21,12 +20,12 @@ def setup_logging(
         Configured logger instance
     """
     # Create logger
-    logger = logging.getLogger('covid_nz_news')
+    logger = logging.getLogger("covid_nz_news")
 
     # Validate log level
-    valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+    valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     if log_level.upper() not in valid_levels:
-        log_level = 'INFO'
+        log_level = "INFO"
 
     logger.setLevel(getattr(logging, log_level.upper()))
 
@@ -35,8 +34,7 @@ def setup_logging(
 
     # Create formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     # Console handler
@@ -48,7 +46,7 @@ def setup_logging(
 
     # File handler
     if log_file:
-        os.makedirs(os.path.dirname(log_file) or '.', exist_ok=True)
+        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)

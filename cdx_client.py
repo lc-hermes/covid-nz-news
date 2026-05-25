@@ -1,4 +1,5 @@
 """CDX client for querying Common Crawl index."""
+
 import json
 import logging
 import time
@@ -15,7 +16,7 @@ class CDXClient:
         timeout: int = 60,
         retry_attempts: int = 3,
         retry_delay: float = 2.0,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize CDX client.
@@ -29,7 +30,7 @@ class CDXClient:
         self.timeout = timeout
         self.retry_attempts = retry_attempts
         self.retry_delay = retry_delay
-        self.logger = logger or logging.getLogger('covid_nz_news.cdx')
+        self.logger = logger or logging.getLogger("covid_nz_news.cdx")
 
     def query_index(self, crawl_id: str, domain: str) -> List[Dict]:
         """
@@ -49,21 +50,25 @@ class CDXClient:
         for attempt in range(self.retry_attempts):
             try:
                 with urllib.request.urlopen(query_url, timeout=self.timeout) as response:
-                    data = response.read().decode('utf-8')
-                    urls = [json.loads(line) for line in data.strip().split('\n') if line]
+                    data = response.read().decode("utf-8")
+                    urls = [json.loads(line) for line in data.strip().split("\n") if line]
                     self.logger.info(f"Found {len(urls)} URLs")
                     return urls
 
             except urllib.error.URLError as e:
-                self.logger.warning(f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}")
+                self.logger.warning(
+                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
+                )
             except json.JSONDecodeError as e:
                 self.logger.error(f"Failed to parse JSON response: {e}")
                 return []
             except Exception as e:
-                self.logger.warning(f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}")
+                self.logger.warning(
+                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
+                )
 
             if attempt < self.retry_attempts - 1:
-                delay = self.retry_delay * (2 ** attempt)
+                delay = self.retry_delay * (2**attempt)
                 self.logger.info(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
 
@@ -83,7 +88,7 @@ class CDXClient:
         """
         covid_urls = []
         for url_entry in urls:
-            url = url_entry.get('url', '').lower()
+            url = url_entry.get("url", "").lower()
             if any(keyword.lower() in url for keyword in keywords):
                 covid_urls.append(url_entry)
 
@@ -102,7 +107,7 @@ class CDXClient:
         """
         warc_files = {}
         for url_entry in urls:
-            filename = url_entry.get('filename', '')
+            filename = url_entry.get("filename", "")
             if filename:
                 if filename not in warc_files:
                     warc_files[filename] = []

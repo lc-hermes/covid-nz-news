@@ -17,6 +17,7 @@ Runtime options (set in settings.py):
     settings.resume = True  # Resume from checkpoint
     settings.use_async = True  # Use async CDX client (10x faster)
 """
+
 import sys
 from datetime import datetime
 
@@ -30,7 +31,7 @@ from warc_downloader import WARCDownloader
 from warc_extractor import WARCExtractor
 
 
-def extract_publish_date(soup, url: str = '') -> str:
+def extract_publish_date(soup, url: str = "") -> str:
     """
     Extract publish date from HTML metadata with multiple heuristics.
 
@@ -44,61 +45,62 @@ def extract_publish_date(soup, url: str = '') -> str:
 
     # Try various meta tags for publish date
     date_tags = [
-        'article:published_time',
-        'og:article:published_time',
-        'datePublished',
-        'article:date',
-        'og:article:published_time',
-        'news:publication_date',
-        'dc.date',
-        'dc.date.created',
-        'dc.date.issued',
-        'pubdate',
-        'publish_date',
+        "article:published_time",
+        "og:article:published_time",
+        "datePublished",
+        "article:date",
+        "og:article:published_time",
+        "news:publication_date",
+        "dc.date",
+        "dc.date.created",
+        "dc.date.issued",
+        "pubdate",
+        "publish_date",
     ]
 
     # Priority order: try property attribute first, then name attribute
     for tag_name in date_tags:
         # Try property attribute (Open Graph, schema.org)
-        meta = soup.find('meta', property=tag_name)
-        if meta and meta.get('content'):
-            content = meta['content']
+        meta = soup.find("meta", property=tag_name)
+        if meta and meta.get("content"):
+            content = meta["content"]
             parsed = _parse_date(content)
             if parsed:
                 return parsed
 
         # Try name attribute
-        meta = soup.find('meta', attrs={'name': tag_name})
-        if meta and meta.get('content'):
-            content = meta['content']
+        meta = soup.find("meta", attrs={"name": tag_name})
+        if meta and meta.get("content"):
+            content = meta["content"]
             parsed = _parse_date(content)
             if parsed:
                 return parsed
 
     # Try time tag with datetime attribute
-    time_tag = soup.find('time', attrs={'datetime': True})
+    time_tag = soup.find("time", attrs={"datetime": True})
     if time_tag:
-        datetime_str = time_tag.get('datetime')
+        datetime_str = time_tag.get("datetime")
         if datetime_str:
             parsed = _parse_date(datetime_str)
             if parsed:
                 return parsed
 
     # Try schema.org structured data
-    script_tag = soup.find('script', type='application/ld+json')
+    script_tag = soup.find("script", type="application/ld+json")
     if script_tag:
         try:
             import json
+
             data = json.loads(script_tag.string)
             if isinstance(data, dict):
                 # Try datePublished
-                date_pub = data.get('datePublished', '')
+                date_pub = data.get("datePublished", "")
                 if date_pub:
                     parsed = _parse_date(date_pub)
                     if parsed:
                         return parsed
                 # Try dateModified as fallback
-                date_mod = data.get('dateModified', '')
+                date_mod = data.get("dateModified", "")
                 if date_mod:
                     parsed = _parse_date(date_mod)
                     if parsed:
@@ -107,13 +109,13 @@ def extract_publish_date(soup, url: str = '') -> str:
             pass
 
     # Try article:modified_time as last resort
-    meta = soup.find('meta', property='article:modified_time')
-    if meta and meta.get('content'):
-        parsed = _parse_date(meta['content'])
+    meta = soup.find("meta", property="article:modified_time")
+    if meta and meta.get("content"):
+        parsed = _parse_date(meta["content"])
         if parsed:
             return parsed
 
-    return ''
+    return ""
 
 
 def _parse_date(date_str: str) -> str:
@@ -129,39 +131,39 @@ def _parse_date(date_str: str) -> str:
     from datetime import datetime
 
     if not date_str:
-        return ''
+        return ""
 
     # Common date formats to try
     formats = [
-        '%Y-%m-%dT%H:%M:%S%z',      # ISO 8601 with timezone
-        '%Y-%m-%dT%H:%M:%SZ',       # ISO 8601 with Z
-        '%Y-%m-%dT%H:%M:%S',        # ISO 8601 without timezone
-        '%Y-%m-%d %H:%M:%S',        # MySQL datetime
-        '%Y-%m-%d',                 # ISO date
-        '%d/%m/%Y %H:%M:%S',        # European format
-        '%d/%m/%Y',                 # European date
-        '%m/%d/%Y %H:%M:%S',        # US format
-        '%m/%d/%Y',                 # US date
+        "%Y-%m-%dT%H:%M:%S%z",  # ISO 8601 with timezone
+        "%Y-%m-%dT%H:%M:%SZ",  # ISO 8601 with Z
+        "%Y-%m-%dT%H:%M:%S",  # ISO 8601 without timezone
+        "%Y-%m-%d %H:%M:%S",  # MySQL datetime
+        "%Y-%m-%d",  # ISO date
+        "%d/%m/%Y %H:%M:%S",  # European format
+        "%d/%m/%Y",  # European date
+        "%m/%d/%Y %H:%M:%S",  # US format
+        "%m/%d/%Y",  # US date
     ]
 
     # Normalize the date string
-    date_str = date_str.replace('Z', '+00:00').strip()
+    date_str = date_str.replace("Z", "+00:00").strip()
 
     for fmt in formats:
         try:
             dt = datetime.strptime(date_str, fmt)
-            return dt.strftime('%Y-%m-%d %H:%M:%S')
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             continue
 
     # Try fromisoformat as fallback (handles many edge cases)
     try:
-        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-        return dt.strftime('%Y-%m-%d %H:%M:%S')
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
     except ValueError:
         pass
 
-    return ''
+    return ""
 
 
 def build_database(logger) -> int:
@@ -184,8 +186,7 @@ def build_database(logger) -> int:
 
     # Initialize progress manager
     progress_manager = ProgressManager(
-        checkpoint_file=settings.database.checkpoint_file,
-        logger=logger
+        checkpoint_file=settings.database.checkpoint_file, logger=logger
     )
 
     # Load or clear checkpoint based on resume flag
@@ -203,7 +204,7 @@ def build_database(logger) -> int:
             rate_limit=settings.network.async_rate_limit,
             max_retries=settings.network.retry_attempts,
             retry_delay=settings.network.retry_delay,
-            logger=logger
+            logger=logger,
         )
         logger.info("Using ASYNC CDX client (10x faster)")
     else:
@@ -211,7 +212,7 @@ def build_database(logger) -> int:
             timeout=settings.network.cdx_timeout,
             retry_attempts=settings.network.retry_attempts,
             retry_delay=settings.network.retry_delay,
-            logger=logger
+            logger=logger,
         )
         logger.info("Using SYNC CDX client")
 
@@ -220,13 +221,13 @@ def build_database(logger) -> int:
         timeout=settings.network.warc_timeout,
         retry_attempts=settings.network.retry_attempts,
         retry_delay=settings.network.retry_delay,
-        logger=logger
+        logger=logger,
     )
     extractor = WARCExtractor(
         min_text_length=settings.extraction.min_text_length,
         max_content_length=settings.extraction.max_content_length,
         allowed_languages=settings.extraction.allowed_languages,
-        logger=logger
+        logger=logger,
     )
 
     # Connect to database
@@ -234,8 +235,7 @@ def build_database(logger) -> int:
 
     # Get remaining work
     remaining_work = progress_manager.get_remaining_work(
-        settings.crawls.crawl_ids,
-        settings.news_sources.domains
+        settings.crawls.crawl_ids, settings.news_sources.domains
     )
 
     if not remaining_work:
@@ -296,7 +296,13 @@ def build_database(logger) -> int:
 
             articles_inserted = 0
             from tqdm import tqdm
-            for file_idx, (filename, url_entries) in tqdm(enumerate(warc_files.items(), 1), total=len(warc_files), desc="    WARC files", leave=False):
+
+            for file_idx, (filename, url_entries) in tqdm(
+                enumerate(warc_files.items(), 1),
+                total=len(warc_files),
+                desc="    WARC files",
+                leave=False,
+            ):
                 logger.info(f"    [{file_idx}/{len(warc_files)}] {filename[:50]}...")
                 logger.info(f"      Contains {len(url_entries)} COVID-related URLs")
 
@@ -308,33 +314,35 @@ def build_database(logger) -> int:
                     continue
 
                 # Extract articles
-                target_urls = {e['url'] for e in url_entries if e.get('url')}
+                target_urls = {e["url"] for e in url_entries if e.get("url")}
                 articles = extractor.extract_from_file(warc_path, target_urls)
 
                 logger.info(f"      Extracted {len(articles)} articles")
 
                 # Save to database with progress bar
                 from tqdm import tqdm
+
                 for article in tqdm(articles, desc="  Inserting", leave=False):
-                    url_entry = next((e for e in url_entries if e.get('url') == article['url']), {})
+                    url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
 
                     # Try to extract publish date from HTML
-                    publish_date = ''
-                    if article.get('html_content'):
+                    publish_date = ""
+                    if article.get("html_content"):
                         from bs4 import BeautifulSoup
-                        soup = BeautifulSoup(article['html_content'], 'lxml')
-                        publish_date = extract_publish_date(soup, article['url'])
+
+                        soup = BeautifulSoup(article["html_content"], "lxml")
+                        publish_date = extract_publish_date(soup, article["url"])
 
                     if db.insert_article(
-                        article['url'],
-                        article['title'],
-                        article['content'],
-                        article['source_domain'],
+                        article["url"],
+                        article["title"],
+                        article["content"],
+                        article["source_domain"],
                         crawl_id,
-                        url_entry.get('timestamp', ''),
-                        article['language'],
-                        article['status_code'],
-                        publish_date
+                        url_entry.get("timestamp", ""),
+                        article["language"],
+                        article["status_code"],
+                        publish_date,
                     ):
                         total_articles += 1
                         articles_inserted += 1
@@ -387,6 +395,7 @@ def build_database(logger) -> int:
     except Exception as e:
         logger.error(f"\nFatal error: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
     finally:
@@ -397,9 +406,7 @@ def main():
     """Main entry point."""
     # Set up logging
     logger = setup_logging(
-        log_level=settings.logging.level,
-        log_file=settings.logging.file,
-        console_output=True
+        log_level=settings.logging.level, log_file=settings.logging.file, console_output=True
     )
 
     # Run
@@ -407,5 +414,5 @@ def main():
     sys.exit(exit_code)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

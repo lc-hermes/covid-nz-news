@@ -8,6 +8,7 @@ Or modified to customize the data collection:
     settings.NZ_NEWS_DOMAINS = ['*.stuff.co.nz/', '*.nzherald.co.nz/']
     settings.CRAWL_IDS = ['CC-MAIN-2020-16', 'CC-MAIN-2020-32']
 """
+
 from dataclasses import dataclass, field
 from typing import List
 
@@ -15,19 +16,22 @@ from typing import List
 @dataclass
 class DatabaseConfig:
     """Database configuration."""
-    path: str = 'covid_nz_news.db'
-    checkpoint_file: str = 'build_progress.json'
+
+    path: str = "covid_nz_news.db"
+    checkpoint_file: str = "build_progress.json"
 
 
 @dataclass
 class CacheConfig:
     """Cache configuration."""
-    directory: str = 'warc_cache'
+
+    directory: str = "warc_cache"
 
 
 @dataclass
 class NetworkConfig:
     """Network configuration."""
+
     cdx_timeout: int = 60
     warc_timeout: int = 300
     retry_attempts: int = 3
@@ -38,88 +42,96 @@ class NetworkConfig:
 @dataclass
 class ExtractionConfig:
     """Article extraction configuration."""
+
     max_content_length: int = 50000
     min_text_length: int = 100
-    allowed_languages: List[str] = field(default_factory=lambda: ['en'])
+    allowed_languages: List[str] = field(default_factory=lambda: ["en"])
 
 
 @dataclass
 class LoggingConfig:
     """Logging configuration."""
-    level: str = 'INFO'
-    file: str = 'covid_nz_news.log'
+
+    level: str = "INFO"
+    file: str = "covid_nz_news.log"
 
 
 @dataclass
 class NewsSourceConfig:
     """News source configuration."""
+
     # Major NZ news domains - add more for comprehensive coverage
-    domains: List[str] = field(default_factory=lambda: [
-        '*.stuff.co.nz/',           # Stuff - largest NZ news site
-        '*.nzherald.co.nz/',        # NZ Herald
-        '*.rnz.co.nz/',             # Radio New Zealand (public broadcaster)
-        '*.newsroom.co.nz/',        # Newsroom
-        '*.tvnz.co.nz/',            # TVNZ
-        '*.3news.co.nz/',           # 3News
-        '*.one-news.co.nz/',        # One News
-        '*.biznews.co.nz/',         # BizzNews
-        '*.stuff.co.nz/business/',  # Stuff Business
-    ])
+    domains: List[str] = field(
+        default_factory=lambda: [
+            "*.stuff.co.nz/",  # Stuff - largest NZ news site
+            "*.nzherald.co.nz/",  # NZ Herald
+            "*.rnz.co.nz/",  # Radio New Zealand (public broadcaster)
+            "*.newsroom.co.nz/",  # Newsroom
+            "*.tvnz.co.nz/",  # TVNZ
+            "*.3news.co.nz/",  # 3News
+            "*.one-news.co.nz/",  # One News
+            "*.biznews.co.nz/",  # BizzNews
+            "*.stuff.co.nz/business/",  # Stuff Business
+        ]
+    )
 
     # COVID-related keywords for filtering
-    keywords: List[str] = field(default_factory=lambda: [
-        'covid',
-        'coronavirus',
-        'vaccine',
-        'lockdown',
-        'quarantine',
-        'border',
-        'cases',
-        'deaths',
-        'hospital',
-        'health',
-        'ministry of health',
-        'covid tracer',
-        'alert level',
-        'stay home',
-        'border closure',
-        'immunity',
-        'variant',
-        'omicron',
-        'delta',
-    ])
+    keywords: List[str] = field(
+        default_factory=lambda: [
+            "covid",
+            "coronavirus",
+            "vaccine",
+            "lockdown",
+            "quarantine",
+            "border",
+            "cases",
+            "deaths",
+            "hospital",
+            "health",
+            "ministry of health",
+            "covid tracer",
+            "alert level",
+            "stay home",
+            "border closure",
+            "immunity",
+            "variant",
+            "omicron",
+            "delta",
+        ]
+    )
 
 
 @dataclass
 class CrawlConfig:
     """Common Crawl configuration."""
+
     # COVID timeline: March 2020 - December 2022
     # Each crawl is biweekly, format: CC-MAIN-YYYY-N (N = 1-26)
-    crawl_ids: List[str] = field(default_factory=lambda: [
-        # 2020 - COVID emergence and first year
-        'CC-MAIN-2020-16',   # April 2020
-        'CC-MAIN-2020-20',   # May 2020
-        'CC-MAIN-2020-24',   # June 2020
-        'CC-MAIN-2020-32',   # August 2020
-        'CC-MAIN-2020-40',   # October 2020
-        'CC-MAIN-2020-48',   # December 2020
-
-        # 2021 - Vaccination rollout
-        'CC-MAIN-2021-8',    # February 2021
-        'CC-MAIN-2021-16',   # April 2021
-        'CC-MAIN-2021-24',   # June 2021
-        'CC-MAIN-2021-32',   # August 2021
-        'CC-MAIN-2021-40',   # October 2021
-        'CC-MAIN-2021-48',   # December 2021
-
-        # 2022 - Omicron and easing
-        'CC-MAIN-2022-8',    # February 2022
-        'CC-MAIN-2022-16',   # April 2022
-        'CC-MAIN-2022-24',   # June 2022
-        'CC-MAIN-2022-32',   # August 2022
-        'CC-MAIN-2022-40',   # October 2022
-        'CC-MAIN-2022-48',   # December 2022
-    ])
+    crawl_ids: List[str] = field(
+        default_factory=lambda: [
+            # 2020 - COVID emergence and first year
+            "CC-MAIN-2020-16",  # April 2020
+            "CC-MAIN-2020-20",  # May 2020
+            "CC-MAIN-2020-24",  # June 2020
+            "CC-MAIN-2020-32",  # August 2020
+            "CC-MAIN-2020-40",  # October 2020
+            "CC-MAIN-2020-48",  # December 2020
+            # 2021 - Vaccination rollout
+            "CC-MAIN-2021-8",  # February 2021
+            "CC-MAIN-2021-16",  # April 2021
+            "CC-MAIN-2021-24",  # June 2021
+            "CC-MAIN-2021-32",  # August 2021
+            "CC-MAIN-2021-40",  # October 2021
+            "CC-MAIN-2021-48",  # December 2021
+            # 2022 - Omicron and easing
+            "CC-MAIN-2022-8",  # February 2022
+            "CC-MAIN-2022-16",  # April 2022
+            "CC-MAIN-2022-24",  # June 2022
+            "CC-MAIN-2022-32",  # August 2022
+            "CC-MAIN-2022-40",  # October 2022
+            "CC-MAIN-2022-48",  # December 2022
+        ]
+    )
 
     # Limit for testing - set to None for full run
     max_warc_files_per_crawl: int | None = 2

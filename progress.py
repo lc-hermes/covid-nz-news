@@ -2,6 +2,7 @@
 
 Saves checkpoint state to allow resuming interrupted database builds.
 """
+
 import json
 import logging
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from typing import Dict, List, Optional
 @dataclass
 class ProgressState:
     """Represents the current progress of the database build."""
+
     completed_crawl_domain_pairs: List[str] = field(default_factory=list)
     total_articles_inserted: int = 0
     last_updated: str = ""
@@ -19,13 +21,13 @@ class ProgressState:
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
         return {
-            'completed_crawl_domain_pairs': self.completed_crawl_domain_pairs,
-            'total_articles_inserted': self.total_articles_inserted,
-            'last_updated': self.last_updated,
+            "completed_crawl_domain_pairs": self.completed_crawl_domain_pairs,
+            "total_articles_inserted": self.total_articles_inserted,
+            "last_updated": self.last_updated,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'ProgressState':
+    def from_dict(cls, data: Dict) -> "ProgressState":
         """Create instance from dictionary."""
         return cls(**data)
 
@@ -34,9 +36,7 @@ class ProgressManager:
     """Manages progress checkpointing for database builds."""
 
     def __init__(
-        self,
-        checkpoint_file: str = 'build_progress.json',
-        logger: Optional[logging.Logger] = None
+        self, checkpoint_file: str = "build_progress.json", logger: Optional[logging.Logger] = None
     ):
         """
         Initialize progress manager.
@@ -46,7 +46,7 @@ class ProgressManager:
             logger: Logger instance
         """
         self.checkpoint_file = Path(checkpoint_file)
-        self.logger = logger or logging.getLogger('covid_nz_news.progress')
+        self.logger = logger or logging.getLogger("covid_nz_news.progress")
         self.state: Optional[ProgressState] = None
 
     def load(self) -> Optional[ProgressState]:
@@ -61,10 +61,12 @@ class ProgressManager:
             return None
 
         try:
-            with open(self.checkpoint_file, 'r') as f:
+            with open(self.checkpoint_file, "r") as f:
                 data = json.load(f)
             self.state = ProgressState.from_dict(data)
-            self.logger.info(f"Loaded progress: {self.state.total_articles_inserted} articles from checkpoint")
+            self.logger.info(
+                f"Loaded progress: {self.state.total_articles_inserted} articles from checkpoint"
+            )
             return self.state
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse checkpoint file: {e}")
@@ -85,7 +87,7 @@ class ProgressManager:
         """
         try:
             self.state = state
-            with open(self.checkpoint_file, 'w') as f:
+            with open(self.checkpoint_file, "w") as f:
                 json.dump(state.to_dict(), f, indent=2)
             self.logger.info(f"Saved checkpoint: {state.total_articles_inserted} articles")
             return True
@@ -148,6 +150,7 @@ class ProgressManager:
 
         self.state.total_articles_inserted += articles_inserted
         from datetime import datetime
+
         self.state.last_updated = datetime.now().isoformat()
 
         return self.save(self.state)
