@@ -32,6 +32,7 @@ class NetworkConfig:
     warc_timeout: int = 300
     retry_attempts: int = 3
     retry_delay: float = 2.0
+    async_rate_limit: int = 10  # requests per second for async mode
 
 
 @dataclass
