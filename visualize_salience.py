@@ -64,11 +64,11 @@ def main():
     print("\nGenerating visualizations...")
 
     try:
-        import matplotlib
+        import matplotlib  # type: ignore
         matplotlib.use('Agg')
-        import matplotlib.dates as mdates
-        import matplotlib.pyplot as plt
-        import pandas as pd
+        import matplotlib.dates as mdates  # type: ignore
+        import matplotlib.pyplot as plt  # type: ignore
+        import pandas as pd  # type: ignore
     except ImportError as e:
         print(f"Visualization libraries not installed: {e}")
         print("Install with: uv pip install matplotlib plotnine")
@@ -95,11 +95,11 @@ def main():
 
 def create_timeline_plot(metrics: SalienceMetrics, output_dir: str):
     """Create daily article count timeline plot."""
-    import matplotlib
+    import matplotlib  # type: ignore
     matplotlib.use('Agg')
-    import matplotlib.dates as mdates
-    import matplotlib.pyplot as plt
-    import pandas as pd
+    import matplotlib.dates as mdates  # type: ignore
+    import matplotlib.pyplot as plt  # type: ignore
+    import pandas as pd  # type: ignore
 
     daily_df = metrics.get_articles_per_day()
 
@@ -155,9 +155,9 @@ def create_timeline_plot(metrics: SalienceMetrics, output_dir: str):
 
 def create_source_comparison_plot(metrics: SalienceMetrics, output_dir: str):
     """Create bar chart comparing article counts by source."""
-    import matplotlib
+    import matplotlib  # type: ignore
     matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt  # type: ignore
 
     source_df = metrics.get_articles_per_source()
 
@@ -200,11 +200,11 @@ def create_source_comparison_plot(metrics: SalienceMetrics, output_dir: str):
 
 def create_stacked_timeline_plot(metrics: SalienceMetrics, output_dir: str):
     """Create stacked area chart showing articles per source per day."""
-    import matplotlib
+    import matplotlib  # type: ignore
     matplotlib.use('Agg')
-    import matplotlib.dates as mdates
-    import matplotlib.pyplot as plt
-    import pandas as pd
+    import matplotlib.dates as mdates  # type: ignore
+    import matplotlib.pyplot as plt  # type: ignore
+    import pandas as pd  # type: ignore
 
     daily_source_df = metrics.get_articles_per_source_per_day()
 
