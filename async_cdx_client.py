@@ -178,7 +178,13 @@ class AsyncCDXClient:
 
         return results
 
-    def query_index(self, crawl_id: str, domain_pattern: str) -> List[Dict]:
+    def query_index(
+        self,
+        crawl_id: str,
+        domain_pattern: str,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
+    ) -> List[Dict]:
         """
         Sync wrapper for async query - for compatibility.
 
