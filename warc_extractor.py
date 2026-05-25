@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Set
 
 import langdetect
 from bs4 import BeautifulSoup
+from readability import Document
 from warcio import ArchiveIterator
 
 
@@ -104,8 +105,8 @@ class WARCExtractor:
             title_tag = soup.find('title')
             title = title_tag.get_text(strip=True) if title_tag else ''
 
-            # Extract main text
-            text = self._extract_main_text(soup)
+            # Extract main text using readability
+            text = self._extract_main_text(soup, content)
 
             # Validate text length
             if len(text) < self.min_text_length:
@@ -136,18 +137,30 @@ class WARCExtractor:
             self.logger.error(f"Failed to extract {url}: {type(e).__name__}: {e}")
             return None
 
-    def _extract_main_text(self, soup: BeautifulSoup) -> str:
+    def _extract_main_text(self, soup: BeautifulSoup, html_content: str = '') -> str:
         """
         Extract main article text from HTML.
 
-        Uses heuristics to find the most likely article content.
+        Uses readability-lxml for better text extraction.
 
         Args:
             soup: BeautifulSoup parsed HTML
+            html_content: Raw HTML content string
 
         Returns:
             Extracted text content
         """
+        # Try readability-lxml first
+        if html_content:
+            try:
+                doc = Document(html_content)
+                text = doc.text  # type: ignore
+                if text and len(text) > self.min_text_length:
+                    return text.strip()
+            except Exception as e:
+                self.logger.debug(f"Readability failed: {type(e).__name__}: {e}")
+
+        # Fallback to heuristics
         # Remove unwanted elements
         for elem in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
             elem.decompose()

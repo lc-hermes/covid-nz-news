@@ -62,6 +62,7 @@ class NewsDatabase:
                 url TEXT UNIQUE NOT NULL,
                 title TEXT,
                 content TEXT,
+                content_hash TEXT,
                 source_domain TEXT,
                 crawl_id TEXT,
                 timestamp TEXT,
@@ -78,6 +79,7 @@ class NewsDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON articles(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_language ON articles(language)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_publish_date ON articles(publish_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_hash ON articles(content_hash)')
 
         if self.conn:
             self.conn.commit()
@@ -107,14 +109,28 @@ class NewsDatabase:
         cursor = self._get_cursor()
 
         try:
+            # Compute content hash for deduplication
+            # Normalize content to handle near-duplicates (whitespace, case)
+            import hashlib
+            import re
+            normalized = re.sub(r'\s+', ' ', content.lower()).strip()
+            content_hash = hashlib.md5(normalized.encode('utf-8')).hexdigest()
+
+            # Check if content already exists
+            cursor.execute('SELECT id FROM articles WHERE content_hash = ?', (content_hash,))
+            if cursor.fetchone():
+                self.logger.debug(f"Skipping duplicate content: {url}")
+                return False
+
             cursor.execute('''
                 INSERT OR REPLACE INTO articles
-                (url, title, content, source_domain, crawl_id, timestamp, language, status_code, publish_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (url, title, content, content_hash, source_domain, crawl_id, timestamp, language, status_code, publish_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 url,
                 title,
                 content,
+                content_hash,
                 source_domain,
                 crawl_id,
                 timestamp,

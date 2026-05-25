@@ -83,7 +83,7 @@ class TestNewsDatabase:
         db.insert_article(
             url='https://example.com/1',
             title='Test',
-            content='Content',
+            content='Content from example',  # Different content
             source_domain='example.com',
             crawl_id='CC-MAIN-2020-16',
             timestamp='20200401000000',
@@ -93,7 +93,7 @@ class TestNewsDatabase:
         db.insert_article(
             url='https://other.com/1',
             title='Test',
-            content='Content',
+            content='Content from other',  # Different content
             source_domain='other.com',
             crawl_id='CC-MAIN-2020-16',
             timestamp='20200401000000',
@@ -112,7 +112,7 @@ class TestNewsDatabase:
         db.insert_article(
             url='https://example.com/1',
             title='Test',
-            content='Content',
+            content='English content here',  # Different content
             source_domain='example.com',
             crawl_id='CC-MAIN-2020-16',
             timestamp='20200401000000',
@@ -122,7 +122,7 @@ class TestNewsDatabase:
         db.insert_article(
             url='https://example.com/2',
             title='Test',
-            content='Content',
+            content='French content ici',  # Different content
             source_domain='example.com',
             crawl_id='CC-MAIN-2020-16',
             timestamp='20200401000000',
