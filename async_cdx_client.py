@@ -154,7 +154,7 @@ class AsyncCDXClient:
 
         return results
 
-    def query_index(self, crawl_id: str, domain_pattern: str) -> List[str]:
+    def query_index(self, crawl_id: str, domain_pattern: str) -> List[Dict]:
         """
         Sync wrapper for async query - for compatibility.
 
@@ -164,10 +164,9 @@ class AsyncCDXClient:
         # For now, just return empty list as placeholder
         self.logger.warning("query_index not implemented for async client")
         return []
-
-    def filter_keywords(self, urls: List[str], keywords: List[str]) -> List[str]:
+    def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
         """Filter URLs by keywords."""
-        return [url for url in urls if any(kw in url.lower() for kw in keywords)]
+        return [url for url in urls if any(kw in url.get('url', '').lower() for kw in keywords)]
 
     def group_by_warc(self, urls: List[Dict]) -> Dict[str, List[Dict]]:
         """Group URLs by WARC file."""
