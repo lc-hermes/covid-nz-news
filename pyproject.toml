@@ -60,6 +60,7 @@ select = [
 ]
 ignore = [
     "E501", # line too long (ruff formats)
+    "F401", # unused imports (false positives in try/except blocks)
 ]
 
 [tool.ruff.lint.isort]

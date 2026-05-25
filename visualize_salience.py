@@ -11,8 +11,6 @@ Usage:
 import argparse
 import os
 
-import polars as pl
-
 from database import NewsDatabase
 from salience_metrics import SalienceMetrics
 
@@ -50,7 +48,7 @@ def main():
 
     # Get statistics
     stats = metrics.get_total_statistics()
-    print(f"\nDatabase statistics:")
+    print("\nDatabase statistics:")
     print(f"  Total articles: {stats['total_articles']:,}")
     print(f"  Unique sources: {stats['unique_sources']}")
     print(f"  Date range: {stats['date_earliest']} to {stats['date_latest']}")
@@ -67,9 +65,9 @@ def main():
 
     try:
         import matplotlib
-        matplotlib.use('Agg')  # Non-interactive backend
-        import matplotlib.pyplot as plt
+        matplotlib.use('Agg')
         import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
         import pandas as pd
     except ImportError as e:
         print(f"Visualization libraries not installed: {e}")
@@ -99,8 +97,8 @@ def create_timeline_plot(metrics: SalienceMetrics, output_dir: str):
     """Create daily article count timeline plot."""
     import matplotlib
     matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
     import pandas as pd
 
     daily_df = metrics.get_articles_per_day()
@@ -182,7 +180,7 @@ def create_source_comparison_plot(metrics: SalienceMetrics, output_dir: str):
     plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
 
     # Add value labels on bars
-    for bar, count in zip(bars, df['article_count']):
+    for bar, count in zip(bars, df['article_count'], strict=True):
         height = bar.get_height()
         ax.annotate(f'{count:,}',
                     xy=(bar.get_x() + bar.get_width() / 2, height),
@@ -204,8 +202,8 @@ def create_stacked_timeline_plot(metrics: SalienceMetrics, output_dir: str):
     """Create stacked area chart showing articles per source per day."""
     import matplotlib
     matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
     import pandas as pd
 
     daily_source_df = metrics.get_articles_per_source_per_day()

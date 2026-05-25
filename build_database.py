@@ -33,16 +33,15 @@ from warc_extractor import WARCExtractor
 def extract_publish_date(soup, url: str = '') -> str:
     """
     Extract publish date from HTML metadata with multiple heuristics.
-    
+
     Args:
         soup: BeautifulSoup parsed HTML
         url: Article URL (for logging/debugging)
-    
+
     Returns:
         ISO format date string or empty string if not found
     """
-    from datetime import datetime
-    
+
     # Try various meta tags for publish date
     date_tags = [
         'article:published_time',
@@ -57,7 +56,7 @@ def extract_publish_date(soup, url: str = '') -> str:
         'pubdate',
         'publish_date',
     ]
-    
+
     # Priority order: try property attribute first, then name attribute
     for tag_name in date_tags:
         # Try property attribute (Open Graph, schema.org)
@@ -67,7 +66,7 @@ def extract_publish_date(soup, url: str = '') -> str:
             parsed = _parse_date(content)
             if parsed:
                 return parsed
-        
+
         # Try name attribute
         meta = soup.find('meta', attrs={'name': tag_name})
         if meta and meta.get('content'):
@@ -75,7 +74,7 @@ def extract_publish_date(soup, url: str = '') -> str:
             parsed = _parse_date(content)
             if parsed:
                 return parsed
-    
+
     # Try time tag with datetime attribute
     time_tag = soup.find('time', attrs={'datetime': True})
     if time_tag:
@@ -84,7 +83,7 @@ def extract_publish_date(soup, url: str = '') -> str:
             parsed = _parse_date(datetime_str)
             if parsed:
                 return parsed
-    
+
     # Try schema.org structured data
     script_tag = soup.find('script', type='application/ld+json')
     if script_tag:
@@ -106,32 +105,32 @@ def extract_publish_date(soup, url: str = '') -> str:
                         return parsed
         except (json.JSONDecodeError, AttributeError):
             pass
-    
+
     # Try article:modified_time as last resort
     meta = soup.find('meta', property='article:modified_time')
     if meta and meta.get('content'):
         parsed = _parse_date(meta['content'])
         if parsed:
             return parsed
-    
+
     return ''
 
 
 def _parse_date(date_str: str) -> str:
     """
     Parse various date formats and return ISO format.
-    
+
     Args:
         date_str: Date string in various formats
-    
+
     Returns:
         ISO format date string or empty string if parsing fails
     """
     from datetime import datetime
-    
+
     if not date_str:
         return ''
-    
+
     # Common date formats to try
     formats = [
         '%Y-%m-%dT%H:%M:%S%z',      # ISO 8601 with timezone
@@ -144,24 +143,24 @@ def _parse_date(date_str: str) -> str:
         '%m/%d/%Y %H:%M:%S',        # US format
         '%m/%d/%Y',                 # US date
     ]
-    
+
     # Normalize the date string
     date_str = date_str.replace('Z', '+00:00').strip()
-    
+
     for fmt in formats:
         try:
             dt = datetime.strptime(date_str, fmt)
             return dt.strftime('%Y-%m-%d %H:%M:%S')
         except ValueError:
             continue
-    
+
     # Try fromisoformat as fallback (handles many edge cases)
     try:
         dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
         return dt.strftime('%Y-%m-%d %H:%M:%S')
     except ValueError:
         pass
-    
+
     return ''
 
 

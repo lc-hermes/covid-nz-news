@@ -1,8 +1,7 @@
 """Tests for publish date extraction functionality."""
-import pytest
 from bs4 import BeautifulSoup
 
-from build_database import extract_publish_date, _parse_date
+from build_database import _parse_date, extract_publish_date
 
 
 class TestParseDate:
