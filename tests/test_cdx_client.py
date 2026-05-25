@@ -77,3 +77,72 @@ class TestCDXClient:
         result = client.group_by_warc([])
         assert isinstance(result, dict)
         assert len(result) == 0
+
+    def test_query_index_with_date_range(self, client):
+        """Query index should include date range parameters when provided."""
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = MagicMock()
+            mock_response.read.return_value = b"example.com/2020/04/01 https://example.com/article"
+            mock_urlopen.return_value = mock_response
+
+            client.query_index(
+                "CC-MAIN-2020-16",
+                "*.example.com/",
+                date_start="2020-04-01",
+                date_end="2020-06-30"
+            )
+
+            # Verify the URL was called with date parameters
+            call_args = mock_urlopen.call_args[0][0]
+            assert "from=2020-04-01" in call_args
+            assert "to=2020-06-30" in call_args
+
+    def test_query_index_without_date_range(self, client):
+        """Query index should work without date range parameters."""
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = MagicMock()
+            mock_response.read.return_value = b"example.com/2020/04/01 https://example.com/article"
+            mock_urlopen.return_value = mock_response
+
+            client.query_index("CC-MAIN-2020-16", "*.example.com/")
+
+            # Verify the URL was called without date parameters
+            call_args = mock_urlopen.call_args[0][0]
+            assert "from=" not in call_args
+            assert "to=" not in call_args
+
+    def test_query_index_with_only_start_date(self, client):
+        """Query index should work with only start date."""
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = MagicMock()
+            mock_response.read.return_value = b"example.com/2020/04/01 https://example.com/article"
+            mock_urlopen.return_value = mock_response
+
+            client.query_index(
+                "CC-MAIN-2020-16",
+                "*.example.com/",
+                date_start="2020-04-01"
+            )
+
+            # Verify the URL was called with only from parameter
+            call_args = mock_urlopen.call_args[0][0]
+            assert "from=2020-04-01" in call_args
+            assert "to=" not in call_args
+
+    def test_query_index_with_only_end_date(self, client):
+        """Query index should work with only end date."""
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = MagicMock()
+            mock_response.read.return_value = b"example.com/2020/04/01 https://example.com/article"
+            mock_urlopen.return_value = mock_response
+
+            client.query_index(
+                "CC-MAIN-2020-16",
+                "*.example.com/",
+                date_end="2020-06-30"
+            )
+
+            # Verify the URL was called with only to parameter
+            call_args = mock_urlopen.call_args[0][0]
+            assert "to=2020-06-30" in call_args
+            assert "from=" not in call_args
