@@ -136,6 +136,10 @@ class Settings:
     news_sources: NewsSourceConfig = NewsSourceConfig()
     crawls: CrawlConfig = CrawlConfig()
 
+    # Runtime configuration (set via settings.py, not CLI)
+    resume: bool = False  # Resume from checkpoint
+    use_async: bool = False  # Use async CDX client (10x faster)
+
     def __repr__(self) -> str:
         return (
             f"Settings(\n"

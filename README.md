@@ -76,6 +76,10 @@ All configuration is in `settings.py` - simply import and modify:
 ```python
 from settings import settings
 
+# Runtime options
+settings.resume = False  # Resume from checkpoint (skip already processed)
+settings.use_async = False  # Use async CDX client (10x faster)
+
 # Database
 settings.database.path = "covid_nz_news.db"
 

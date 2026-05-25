@@ -6,14 +6,17 @@ about COVID-19 from Common Crawl web archive.
 Configuration is managed via settings.py - simply import and modify.
 
 Usage:
-    uv run build_database.py [--resume]
+    uv run build_database.py
 
 To customize:
     1. Edit settings.py or create custom_settings.py
     2. Import your settings: from custom_settings import settings
     3. Run the script
+
+Runtime options (set in settings.py):
+    settings.resume = True  # Resume from checkpoint
+    settings.use_async = True  # Use async CDX client (10x faster)
 """
-import argparse
 import sys
 from datetime import datetime
 
@@ -83,14 +86,9 @@ def extract_publish_date(soup) -> str:
     return ''
 
 
-def build_database(logger, resume: bool = False, use_async: bool = False) -> int:
+def build_database(logger) -> int:
     """
     Build the news database.
-
-    Args:
-        logger: Logger instance
-        resume: Whether to resume from checkpoint
-        use_async: Whether to use async CDX client
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -102,8 +100,8 @@ def build_database(logger, resume: bool = False, use_async: bool = False) -> int
     logger.info(f"News sources: {len(settings.news_sources.domains)} domains")
     logger.info(f"Crawl IDs: {len(settings.crawls.crawl_ids)}")
     logger.info(f"Keywords: {len(settings.news_sources.keywords)} terms")
-    logger.info(f"Resume mode: {resume}")
-    logger.info(f"Async mode: {use_async}")
+    logger.info(f"Resume mode: {settings.resume}")
+    logger.info(f"Async mode: {settings.use_async}")
     logger.info("=" * 70)
 
     # Initialize progress manager
@@ -113,7 +111,7 @@ def build_database(logger, resume: bool = False, use_async: bool = False) -> int
     )
 
     # Load or clear checkpoint based on resume flag
-    if resume:
+    if settings.resume:
         progress_manager.load()
     else:
         progress_manager.clear()
@@ -122,7 +120,7 @@ def build_database(logger, resume: bool = False, use_async: bool = False) -> int
     db = NewsDatabase(settings.database.path, logger)
 
     # Initialize CDX client based on mode
-    if use_async:
+    if settings.use_async:
         cdx_client = AsyncCDXClient(
             rate_limit=settings.network.async_rate_limit,
             max_retries=settings.network.retry_attempts,
@@ -317,22 +315,6 @@ def build_database(logger, resume: bool = False, use_async: bool = False) -> int
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description='Build COVID NZ News database from Common Crawl'
-    )
-    parser.add_argument(
-        '--resume',
-        action='store_true',
-        help='Resume from checkpoint (skip already processed crawl-domain pairs)'
-    )
-    parser.add_argument(
-        '--async',
-        dest='use_async',
-        action='store_true',
-        help='Use async CDX client (10x faster, queries in parallel)'
-    )
-    args = parser.parse_args()
-
     # Set up logging
     logger = setup_logging(
         log_level=settings.logging.level,
@@ -341,7 +323,7 @@ def main():
     )
 
     # Run
-    exit_code = build_database(logger, resume=args.resume, use_async=args.use_async)
+    exit_code = build_database(logger)
     sys.exit(exit_code)
 
 
