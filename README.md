@@ -11,8 +11,12 @@ This project extracts full-text articles from major NZ news sources during the C
 - **Multi-source**: Captures articles from 6 major NZ news outlets
 - **Multi-crawl**: Processes 24 Common Crawl snapshots from 2020-2022
 - **Memory-efficient**: Streaming WARC parsing (handles 5-6GB files)
-- **Production-ready**: Full type checking, linting, CI/CD
+- **Production-ready**: Full type checking, linting, CI/CD with coverage
 - **Easy configuration**: Single Python config file (no CLI args)
+- **Content deduplication**: MD5 hash-based deduplication with normalization
+- **Publish date extraction**: Extracts actual publish dates from HTML metadata
+- **Visualization tools**: Built-in plotting for salience timeline analysis
+- **Progress tracking**: TQDM progress bars for long-running builds
 
 ## News Sources
 
@@ -126,11 +130,13 @@ CREATE TABLE articles (
     url TEXT UNIQUE NOT NULL,
     title TEXT,
     content TEXT,
+    content_hash TEXT,
     source_domain TEXT,
     crawl_id TEXT,
     timestamp TEXT,
     language TEXT,
     status_code TEXT,
+    publish_date TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
@@ -141,6 +147,35 @@ CREATE TABLE articles (
 - `idx_source` - Group by news source
 - `idx_timestamp` - Timeline analysis
 - `idx_language` - Language filtering
+- `idx_publish_date` - Sort by actual publish date
+- `idx_content_hash` - Deduplication lookup
+
+## Visualization
+
+Generate plots of the COVID salience timeline:
+
+```bash
+uv run visualize_salience.py --db-path covid_nz_news.db --output-dir ./exports
+```
+
+This generates three visualization files:
+- `covid_salience_timeline.png` - Daily article counts with 7-day rolling average
+- `articles_by_source.png` - Bar chart of articles per news source
+- `stacked_timeline_by_source.png` - Stacked area chart showing coverage over time
+
+### Installation
+
+Visualization requires matplotlib:
+
+```bash
+uv pip install matplotlib
+```
+
+Or install with the viz extras:
+
+```bash
+uv pip install -e ".[viz]"
+```
 
 ## Querying the Database
 
@@ -175,7 +210,52 @@ articles = db.query_articles(
 db.close()
 ```
 
-## Analysis Example: COVID Salience Timeline
+## Visualization
+
+Generate plots of the COVID salience timeline:
+
+```bash
+uv run visualize_salience.py --db-path covid_nz_news.db --output-dir ./exports
+```
+
+This generates:
+- `covid_salience_timeline.png` - Daily article counts with 7-day rolling average
+- `articles_by_source.png` - Bar chart of articles per news source
+- `stacked_timeline_by_source.png` - Stacked area chart showing coverage over time
+
+Install visualization dependencies:
+```bash
+uv pip install matplotlib
+```
+
+## Analysis Tools
+
+Use the built-in salience metrics module:
+
+```python
+from database import NewsDatabase
+from salience_metrics import SalienceMetrics
+
+db = NewsDatabase("covid_nz_news.db")
+db.connect()
+
+metrics = SalienceMetrics(db)
+
+# Get articles per day
+daily = metrics.get_articles_per_day()
+print(daily)
+
+# Get articles per source
+by_source = metrics.get_articles_per_source()
+print(by_source)
+
+# Get total statistics
+stats = metrics.get_total_statistics()
+print(f"Total articles: {stats['total_articles']}")
+print(f"Date range: {stats['date_earliest']} to {stats['date_latest']}")
+
+db.close()
+```
 
 ```python
 import sqlite3
@@ -250,19 +330,16 @@ Total coverage: ~2 years of NZ COVID news coverage.
 
 ## Limitations
 
-1. **Publish date vs crawl date**: Currently uses WARC timestamp (crawl time), not article publish date
-2. **No deduplication**: Same article may appear multiple times if URL differs
+1. **Publish date extraction**: Not all articles have publish dates in HTML metadata; falls back to crawl date
+2. **Deduplication sensitivity**: MD5 hash-based deduplication may miss near-duplicates with minor content changes
 3. **No export**: Data is in SQLite only (no CSV/JSON export yet)
-4. **No progress tracking**: No checkpoint/resume functionality
 
 ## Future Improvements
 
-- [ ] Extract publish date from article HTML
-- [ ] Content-based deduplication
 - [ ] Export to CSV/JSON
-- [ ] Progress checkpointing
-- [ ] Salience metrics calculation
-- [ ] Timeline visualization
+- [ ] Advanced salience metrics (topic modeling, sentiment analysis)
+- [ ] Interactive Jupyter notebook for exploration
+- [ ] API endpoint for querying database
 
 ## License
 

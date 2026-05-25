@@ -63,7 +63,7 @@ jobs:
       - name: Run pytest
         run: |
           source .venv/bin/activate
-          uv run pytest -v --tb=short
+          uv run pytest -v --tb=short --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage report (optional)
         uses: codecov/codecov-action@v3

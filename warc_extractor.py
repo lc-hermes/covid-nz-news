@@ -1,4 +1,5 @@
 """WARC file extractor with streaming support."""
+
 import gzip
 import logging
 from typing import Dict, List, Optional, Set
@@ -17,7 +18,7 @@ class WARCExtractor:
         max_content_length: int = 50000,
         min_text_length: int = 100,
         allowed_languages: Optional[List[str]] = None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize WARC extractor.
@@ -30,14 +31,10 @@ class WARCExtractor:
         """
         self.max_content_length = max_content_length
         self.min_text_length = min_text_length
-        self.allowed_languages = allowed_languages or ['en']
-        self.logger = logger or logging.getLogger('covid_nz_news.extractor')
+        self.allowed_languages = allowed_languages or ["en"]
+        self.logger = logger or logging.getLogger("covid_nz_news.extractor")
 
-    def extract_from_file(
-        self,
-        warc_path: str,
-        target_urls: Set[str]
-    ) -> List[Dict]:
+    def extract_from_file(self, warc_path: str, target_urls: Set[str]) -> List[Dict]:
         """
         Extract articles from a WARC file for specific URLs.
 
@@ -57,17 +54,17 @@ class WARCExtractor:
 
         # Stream decompression and parsing
         try:
-            with gzip.open(warc_path, 'rb') as gz_file:
+            with gzip.open(warc_path, "rb") as gz_file:
                 reader = ArchiveIterator(gz_file)
 
                 for record in reader:
                     headers = dict(record.rec_headers.headers)
 
-                    record_type = headers.get('WARC-Type', '')
-                    record_url = headers.get('WARC-Target-URI', '')
+                    record_type = headers.get("WARC-Type", "")
+                    record_url = headers.get("WARC-Target-URI", "")
 
                     # Only process response records for our target URLs
-                    if record_type == 'response' and record_url in target_urls:
+                    if record_type == "response" and record_url in target_urls:
                         article = self._extract_article(record, headers)
                         if article:
                             extracted.append(article)
@@ -91,19 +88,19 @@ class WARCExtractor:
         Returns:
             Article dictionary or None if extraction failed
         """
-        url = headers.get('WARC-Target-URI', '')
+        url = headers.get("WARC-Target-URI", "")
 
         try:
             # Read payload
             payload = record.raw_stream.read()
-            content = payload.decode('utf-8', errors='ignore')
+            content = payload.decode("utf-8", errors="ignore")
 
             # Parse HTML
-            soup = BeautifulSoup(content, 'lxml')
+            soup = BeautifulSoup(content, "lxml")
 
             # Extract title
-            title_tag = soup.find('title')
-            title = title_tag.get_text(strip=True) if title_tag else ''
+            title_tag = soup.find("title")
+            title = title_tag.get_text(strip=True) if title_tag else ""
 
             # Extract main text using readability
             text = self._extract_main_text(soup, content)
@@ -117,7 +114,7 @@ class WARCExtractor:
             try:
                 lang = langdetect.detect(text[:10000])
             except langdetect.LangDetectException:
-                lang = 'unknown'
+                lang = "unknown"
 
             # Filter by language
             if lang not in self.allowed_languages:
@@ -125,19 +122,19 @@ class WARCExtractor:
                 return None
 
             return {
-                'url': url,
-                'title': title,
-                'content': text[:self.max_content_length],
-                'source_domain': self._extract_source_domain(url),
-                'language': lang,
-                'status_code': headers.get('WARC-Status-Code', ''),
+                "url": url,
+                "title": title,
+                "content": text[: self.max_content_length],
+                "source_domain": self._extract_source_domain(url),
+                "language": lang,
+                "status_code": headers.get("WARC-Status-Code", ""),
             }
 
         except Exception as e:
             self.logger.error(f"Failed to extract {url}: {type(e).__name__}: {e}")
             return None
 
-    def _extract_main_text(self, soup: BeautifulSoup, html_content: str = '') -> str:
+    def _extract_main_text(self, soup: BeautifulSoup, html_content: str = "") -> str:
         """
         Extract main article text from HTML.
 
@@ -162,41 +159,41 @@ class WARCExtractor:
 
         # Fallback to heuristics
         # Remove unwanted elements
-        for elem in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+        for elem in soup(["script", "style", "nav", "footer", "header", "aside"]):
             elem.decompose()
 
         # Try main tag
-        main = soup.find('main')
+        main = soup.find("main")
         if main:
-            text = main.get_text(separator=' ', strip=True)
+            text = main.get_text(separator=" ", strip=True)
             if len(text) > self.min_text_length:
                 return text
 
         # Try article tag
-        article = soup.find('article')
+        article = soup.find("article")
         if article:
-            text = article.get_text(separator=' ', strip=True)
+            text = article.get_text(separator=" ", strip=True)
             if len(text) > self.min_text_length:
                 return text
 
         # Try common article containers
-        for selector in ['div.article', 'div.content', 'div.body', 'div.main']:
+        for selector in ["div.article", "div.content", "div.body", "div.main"]:
             elements = soup.select(selector)
             for elem in elements:
-                text = elem.get_text(separator=' ', strip=True)
+                text = elem.get_text(separator=" ", strip=True)
                 if len(text) > self.min_text_length:
                     return text
 
         # Fallback: find longest paragraph block
-        paragraphs = soup.find_all(['p', 'div'])
-        texts = [p.get_text(separator=' ', strip=True) for p in paragraphs]
+        paragraphs = soup.find_all(["p", "div"])
+        texts = [p.get_text(separator=" ", strip=True) for p in paragraphs]
         texts = [t for t in texts if len(t) > self.min_text_length]
 
         if texts:
             return max(texts, key=len)  # type: ignore
 
         # Last resort: get all text
-        return soup.get_text(separator=' ', strip=True)
+        return soup.get_text(separator=" ", strip=True)
 
     def _extract_source_domain(self, url: str) -> str:
         """
@@ -210,11 +207,12 @@ class WARCExtractor:
         """
         try:
             from urllib.parse import urlparse
+
             parsed = urlparse(url)
-            domain = parsed.netloc or ''
+            domain = parsed.netloc or ""
             # Remove www. prefix
-            if domain.startswith('www.'):
+            if domain.startswith("www."):
                 domain = domain[4:]
             return domain
         except Exception:
-            return ''
+            return ""

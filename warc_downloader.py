@@ -1,4 +1,5 @@
 """WARC file downloader with caching and retry logic."""
+
 import logging
 import os
 import time
@@ -18,7 +19,7 @@ class WARCDownloader:
         timeout: int = 300,
         retry_attempts: int = 3,
         retry_delay: float = 2.0,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize WARC downloader.
@@ -34,7 +35,7 @@ class WARCDownloader:
         self.timeout = timeout
         self.retry_attempts = retry_attempts
         self.retry_delay = retry_delay
-        self.logger = logger or logging.getLogger('covid_nz_news.downloader')
+        self.logger = logger or logging.getLogger("covid_nz_news.downloader")
 
         os.makedirs(cache_dir, exist_ok=True)
 
@@ -48,7 +49,7 @@ class WARCDownloader:
         Returns:
             Path to cached WARC file, or None if download failed
         """
-        cache_path = os.path.join(self.cache_dir, filename.replace('/', '_'))
+        cache_path = os.path.join(self.cache_dir, filename.replace("/", "_"))
 
         if self._is_valid_cache(cache_path, filename):
             self.logger.info(f"Using cached: {filename[:60]}...")
@@ -62,7 +63,7 @@ class WARCDownloader:
                 with urllib.request.urlopen(warc_url, timeout=self.timeout) as response:
                     warc_data = response.read()
 
-                with open(cache_path, 'wb') as f:
+                with open(cache_path, "wb") as f:
                     f.write(warc_data)
 
                 self._store_cache_metadata(cache_path, filename, len(warc_data))
@@ -71,12 +72,16 @@ class WARCDownloader:
                 return cache_path
 
             except urllib.error.URLError as e:
-                self.logger.warning(f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}")
+                self.logger.warning(
+                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
+                )
             except Exception as e:
-                self.logger.warning(f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}")
+                self.logger.warning(
+                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
+                )
 
             if attempt < self.retry_attempts - 1:
-                delay = self.retry_delay * (2 ** attempt)
+                delay = self.retry_delay * (2**attempt)
                 self.logger.info(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
 
@@ -93,7 +98,7 @@ class WARCDownloader:
             return False
 
         try:
-            with open(meta_path, 'r') as f:
+            with open(meta_path, "r") as f:
                 meta = f.read().strip()
             return meta == filename
         except Exception:
@@ -102,9 +107,9 @@ class WARCDownloader:
     def _store_cache_metadata(self, cache_path: str, filename: str, size: int):
         """Store metadata for cached file."""
         meta_path = f"{cache_path}.meta"
-        with open(meta_path, 'w') as f:
+        with open(meta_path, "w") as f:
             f.write(filename)
 
         size_path = f"{cache_path}.size"
-        with open(size_path, 'w') as f:
+        with open(size_path, "w") as f:
             f.write(str(size))
