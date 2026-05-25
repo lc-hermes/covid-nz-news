@@ -1,35 +1,49 @@
 ## Summary
 
-Added salience metrics calculation and export functionality using Polars (not pandas).
+Major production improvements for COVID NZ News database builder.
 
 ## New Features
 
-### 1. Salience Metrics Module (salience_metrics.py)
-- get_articles_per_day() - Daily article counts
-- get_articles_per_source() - Article counts by source
-- get_articles_per_source_per_day() - Daily counts per source
-- get_total_statistics() - Overall database statistics
+### 1. Progress Checkpointing (progress.py)
+- Save progress after each crawl-domain pair
+- --resume flag to continue from checkpoint
+- Prevents losing progress on interruption
+- 12 new unit tests
 
-### 2. Export CLI (export_salience.py)
-Exports three CSV files:
-- articles_per_day.csv - Time series of article counts
-- articles_per_source.csv - Distribution across sources
-- articles_per_source_per_day.csv - Granular daily breakdown
+### 2. Publish Date Extraction
+- Extract article publish date from HTML metadata
+- Supports: article:published_time, datePublished, og:article:published_time, etc.
+- Added publish_date column to database schema
+- Index on publish_date for faster queries
 
-### 3. Uses Polars
-- Fast, memory-efficient data processing
-- No pandas dependency
-- Easy export to CSV for Excel/pandas analysis
+## Changes
+
+### New Files
+- progress.py - Progress tracking module
+- tests/test_progress.py - Unit tests (12 tests)
+
+### Modified Files
+- build_database.py - Added --resume flag and progress integration
+- database.py - Added publish_date column and index
+- settings.py - Added checkpoint_file config
 
 ## Testing
-- 54 tests passing (added 4 new tests for salience metrics)
-- All linting and type checks pass
+- 66 tests passing (12 new tests added)
+- All lint and type checks passing
 
-## Usage Example
+## Usage
 
-After building the database:
-    uv run export_salience.py
+```bash
+# Start fresh build
+uv run build_database.py
 
-This creates an exports/ directory with daily time series, source breakdown, and detailed daily-by-source matrix.
+# Resume from checkpoint after interruption
+uv run build_database.py --resume
+```
 
-The CSV files are ready for stakeholder review.
+## Benefits
+
+1. **Reliability**: No more losing hours of progress on interruption
+2. **Flexibility**: Can pause and resume at any time
+3. **Better Data**: Publish dates enable accurate timeline analysis
+4. **Production Ready**: Suitable for long-running builds
