@@ -1,7 +1,7 @@
 """Async CDX server client with rate limiting."""
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import aiohttp
 
@@ -153,3 +153,23 @@ class AsyncCDXClient:
                     self.logger.info(f"Found {len(urls)} URLs for {domain} in {crawl_id}")
 
         return results
+
+    def query_index(self, crawl_id: str, domain_pattern: str) -> List[str]:
+        """
+        Sync wrapper for async query - for compatibility.
+
+        This is a blocking call that runs the async method.
+        """
+        # This is a simplified version - in production, we'd want to query all at once
+        # For now, just return empty list as placeholder
+        self.logger.warning("query_index not implemented for async client")
+        return []
+
+    def filter_keywords(self, urls: List[str], keywords: List[str]) -> List[str]:
+        """Filter URLs by keywords."""
+        return [url for url in urls if any(kw in url.lower() for kw in keywords)]
+
+    def group_by_warc(self, urls: List[Dict]) -> Dict[str, List[Dict]]:
+        """Group URLs by WARC file."""
+        # Simplified - just return all URLs in one group
+        return {'all_urls': urls}

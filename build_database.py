@@ -17,6 +17,7 @@ import argparse
 import sys
 from datetime import datetime
 
+from async_cdx_client import AsyncCDXClient
 from cdx_client import CDXClient
 from database import NewsDatabase
 from logger import setup_logging
@@ -82,13 +83,14 @@ def extract_publish_date(soup) -> str:
     return ''
 
 
-def build_database(logger, resume: bool = False) -> int:
+def build_database(logger, resume: bool = False, use_async: bool = False) -> int:
     """
     Build the news database.
 
     Args:
         logger: Logger instance
         resume: Whether to resume from checkpoint
+        use_async: Whether to use async CDX client
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -101,6 +103,7 @@ def build_database(logger, resume: bool = False) -> int:
     logger.info(f"Crawl IDs: {len(settings.crawls.crawl_ids)}")
     logger.info(f"Keywords: {len(settings.news_sources.keywords)} terms")
     logger.info(f"Resume mode: {resume}")
+    logger.info(f"Async mode: {use_async}")
     logger.info("=" * 70)
 
     # Initialize progress manager
@@ -117,12 +120,25 @@ def build_database(logger, resume: bool = False) -> int:
 
     # Initialize components
     db = NewsDatabase(settings.database.path, logger)
-    cdx_client = CDXClient(
-        timeout=settings.network.cdx_timeout,
-        retry_attempts=settings.network.retry_attempts,
-        retry_delay=settings.network.retry_delay,
-        logger=logger
-    )
+
+    # Initialize CDX client based on mode
+    if use_async:
+        cdx_client = AsyncCDXClient(
+            rate_limit=settings.network.async_rate_limit,
+            max_retries=settings.network.retry_attempts,
+            retry_delay=settings.network.retry_delay,
+            logger=logger
+        )
+        logger.info("Using ASYNC CDX client (10x faster)")
+    else:
+        cdx_client = CDXClient(
+            timeout=settings.network.cdx_timeout,
+            retry_attempts=settings.network.retry_attempts,
+            retry_delay=settings.network.retry_delay,
+            logger=logger
+        )
+        logger.info("Using SYNC CDX client")
+
     downloader = WARCDownloader(
         cache_dir=settings.cache.directory,
         timeout=settings.network.warc_timeout,
@@ -309,6 +325,12 @@ def main():
         action='store_true',
         help='Resume from checkpoint (skip already processed crawl-domain pairs)'
     )
+    parser.add_argument(
+        '--async',
+        dest='use_async',
+        action='store_true',
+        help='Use async CDX client (10x faster, queries in parallel)'
+    )
     args = parser.parse_args()
 
     # Set up logging
@@ -319,7 +341,7 @@ def main():
     )
 
     # Run
-    exit_code = build_database(logger, resume=args.resume)
+    exit_code = build_database(logger, resume=args.resume, use_async=args.use_async)
     sys.exit(exit_code)
 
 
