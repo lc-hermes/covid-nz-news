@@ -200,3 +200,125 @@ class TestNewsDatabase:
         """Close should close connection."""
         db.close()
         assert db.conn is None
+
+    def test_content_hash_deduplication(self, db):
+        """Duplicate content should be detected and skipped."""
+        # Insert first article
+        result1 = db.insert_article(
+            url='https://example.com/article1',
+            title='Test Article',
+            content='This is the same content',
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200401000000',
+            language='en',
+            status_code='200'
+        )
+        assert result1 is True
+        assert db.get_count() == 1
+
+        # Try to insert duplicate content with different URL
+        result2 = db.insert_article(
+            url='https://example.com/article2',  # Different URL
+            title='Test Article 2',  # Different title
+            content='This is the same content',  # Same content
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200402000000',
+            language='en',
+            status_code='200'
+        )
+        # Should return False because content is duplicate
+        assert result2 is False
+        # Count should still be 1
+        assert db.get_count() == 1
+
+    def test_whitespace_normalization(self, db):
+        """Content with different whitespace should be considered duplicate."""
+        # Insert first article
+        result1 = db.insert_article(
+            url='https://example.com/article1',
+            title='Test',
+            content='This is content with spaces',
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200401000000',
+            language='en',
+            status_code='200'
+        )
+        assert result1 is True
+
+        # Try to insert with extra whitespace (should be duplicate)
+        result2 = db.insert_article(
+            url='https://example.com/article2',
+            title='Test',
+            content='This  is  content  with  spaces',  # Extra spaces between same words
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200402000000',
+            language='en',
+            status_code='200'
+        )
+        # Should be detected as duplicate due to normalization
+        assert result2 is False
+        assert db.get_count() == 1
+
+    def test_case_insensitive_deduplication(self, db):
+        """Content with different case should be considered duplicate."""
+        # Insert first article
+        result1 = db.insert_article(
+            url='https://example.com/article1',
+            title='Test',
+            content='This is content',
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200401000000',
+            language='en',
+            status_code='200'
+        )
+        assert result1 is True
+
+        # Try to insert with different case (should be duplicate)
+        result2 = db.insert_article(
+            url='https://example.com/article2',
+            title='Test',
+            content='THIS IS CONTENT',  # Uppercase
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200402000000',
+            language='en',
+            status_code='200'
+        )
+        # Should be detected as duplicate due to case normalization
+        assert result2 is False
+        assert db.get_count() == 1
+
+    def test_different_content_not_deduplicated(self, db):
+        """Different content should not be deduplicated."""
+        # Insert first article
+        result1 = db.insert_article(
+            url='https://example.com/article1',
+            title='Test',
+            content='This is content A',
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200401000000',
+            language='en',
+            status_code='200'
+        )
+        assert result1 is True
+
+        # Insert different content
+        result2 = db.insert_article(
+            url='https://example.com/article2',
+            title='Test',
+            content='This is content B',  # Different content
+            source_domain='example.com',
+            crawl_id='CC-MAIN-2020-16',
+            timestamp='20200402000000',
+            language='en',
+            status_code='200'
+        )
+        # Should be inserted because content is different
+        assert result2 is True
+        assert db.get_count() == 2
