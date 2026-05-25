@@ -1,10 +1,7 @@
 """Unit tests for progress tracking."""
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock
 
-from progress import ProgressState, ProgressManager
+from progress import ProgressManager, ProgressState
 
 
 class TestProgressState:
@@ -67,10 +64,10 @@ class TestProgressManager:
             'total_articles_inserted': 100,
             'last_updated': '2024-01-01'
         }))
-        
+
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
         state = manager.load()
-        
+
         assert state is not None
         assert state.completed_crawl_domain_pairs == ['crawl1:domain1']
         assert state.total_articles_inserted == 100
@@ -79,27 +76,27 @@ class TestProgressManager:
         """Test loading from invalid JSON file."""
         checkpoint_file = tmp_path / 'progress.json'
         checkpoint_file.write_text('invalid json')
-        
+
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
         state = manager.load()
-        
+
         assert state is None
 
     def test_save(self, tmp_path):
         """Test saving progress state."""
         checkpoint_file = tmp_path / 'progress.json'
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
-        
+
         state = ProgressState(
             completed_crawl_domain_pairs=['crawl1:domain1'],
             total_articles_inserted=50,
             last_updated='2024-01-01'
         )
-        
+
         result = manager.save(state)
         assert result is True
         assert checkpoint_file.exists()
-        
+
         loaded_data = json.loads(checkpoint_file.read_text())
         assert loaded_data['total_articles_inserted'] == 50
 
@@ -107,10 +104,10 @@ class TestProgressManager:
         """Test clearing checkpoint file."""
         checkpoint_file = tmp_path / 'progress.json'
         checkpoint_file.write_text('{}')
-        
+
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
         result = manager.clear()
-        
+
         assert result is True
         assert not checkpoint_file.exists()
 
@@ -122,10 +119,10 @@ class TestProgressManager:
             'total_articles_inserted': 100,
             'last_updated': '2024-01-01'
         }))
-        
+
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
         manager.load()
-        
+
         assert manager.is_completed('crawl1', 'domain1') is True
         assert manager.is_completed('crawl2', 'domain2') is True
         assert manager.is_completed('crawl3', 'domain3') is False
@@ -134,7 +131,7 @@ class TestProgressManager:
         """Test marking crawl-domain pair as completed."""
         checkpoint_file = tmp_path / 'progress.json'
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
-        
+
         result = manager.mark_completed('crawl1', 'domain1', 10)
         assert result is True
         assert manager.state is not None
@@ -149,15 +146,15 @@ class TestProgressManager:
             'total_articles_inserted': 10,
             'last_updated': '2024-01-01'
         }))
-        
+
         manager = ProgressManager(checkpoint_file=str(checkpoint_file))
         manager.load()
-        
+
         all_crawls = ['crawl1', 'crawl2']
         all_domains = ['domain1', 'domain2']
-        
+
         remaining = manager.get_remaining_work(all_crawls, all_domains)
-        
+
         # Should have 3 remaining (crawl1:domain2, crawl2:domain1, crawl2:domain2)
         assert len(remaining) == 3
         assert ('crawl1', 'domain2') in remaining
