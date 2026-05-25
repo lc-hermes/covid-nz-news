@@ -291,7 +291,6 @@ conn.close()
 covid-nz-news/
 ├── build_database.py    # Main entry point
 ├── settings.py          # Configuration (importable)
-├── config.py            # Legacy (deprecated)
 ├── cdx_client.py        # Common Crawl CDX client
 ├── database.py          # SQLite operations
 ├── logger.py            # Logging setup
