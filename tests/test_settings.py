@@ -1,4 +1,5 @@
 """Unit tests for COVID NZ News Database Builder."""
+
 import os
 
 import pytest
@@ -16,8 +17,8 @@ class TestNewsSourceConfig:
     def test_domains_are_valid_patterns(self):
         """All domains should be valid wildcard patterns."""
         for domain in settings.news_sources.domains:
-            assert domain.startswith('*') or domain.startswith('http')
-            assert '/' in domain
+            assert domain.startswith("*") or domain.startswith("http")
+            assert "/" in domain
 
     def test_keywords_not_empty(self):
         """Ensure at least one COVID keyword is configured."""
@@ -40,7 +41,8 @@ class TestCrawlConfig:
     def test_crawl_ids_are_valid(self):
         """All crawl IDs should follow CC-MAIN-YYYY-N format."""
         import re
-        pattern = r'^CC-MAIN-\d{4}-\d+$'
+
+        pattern = r"^CC-MAIN-\d{4}-\d+$"
         for crawl_id in settings.crawls.crawl_ids:
             assert re.match(pattern, crawl_id), f"Invalid crawl ID: {crawl_id}"
 
@@ -54,7 +56,7 @@ class TestDatabaseConfig:
 
     def test_database_path_is_valid(self):
         """Database path should be a valid path."""
-        assert settings.database.path.endswith('.db') or '/' in settings.database.path
+        assert settings.database.path.endswith(".db") or "/" in settings.database.path
 
     def test_cache_directory_exists_or_creatable(self):
         """Cache directory should exist or be creatable."""
@@ -108,10 +110,10 @@ class TestLoggingConfig:
 
     def test_log_level_is_valid(self):
         """Log level should be a valid Python logging level."""
-        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         assert settings.logging.level in valid_levels
 
     def test_log_file_has_valid_extension(self):
         """Log file should have .log extension or be empty."""
         if settings.logging.file:
-            assert settings.logging.file.endswith('.log') or '/' in settings.logging.file
+            assert settings.logging.file.endswith(".log") or "/" in settings.logging.file
