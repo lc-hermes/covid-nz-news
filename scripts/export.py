@@ -17,7 +17,7 @@ def export_to_csv_json(db_path: str | Path, out_dir: str | Path, fmt: str = "csv
         {"date": "2023-01-01", "count": 5},
         {"date": "2023-01-02", "count": 3},
     ]
-    out_path = out_dir / f"dummy.{fmt if fmt in ("csv", "json") else "csv"}"
+    out_path = out_dir / f"dummy.{fmt if fmt in ('csv', 'json') else 'csv'}"
     if fmt == "csv":
         with out_path.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=rows[0].keys())
