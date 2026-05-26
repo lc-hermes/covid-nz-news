@@ -32,18 +32,32 @@ class CDXClient:
         self.retry_delay = retry_delay
         self.logger = logger or logging.getLogger("covid_nz_news.cdx")
 
-    def query_index(self, crawl_id: str, domain: str) -> List[Dict]:
+    def query_index(
+        self, crawl_id: str, domain: str, date_start: Optional[str] = None, date_end: Optional[str] = None
+    ) -> List[Dict]:
         """
         Query Common Crawl CDX index for URLs matching domain.
 
         Args:
             crawl_id: Common Crawl ID (e.g., 'CC-MAIN-2020-16')
             domain: URL pattern to match (e.g., '*.nzherald.co.nz/')
+            date_start: Optional start date filter (ISO format, e.g., '2020-04-01')
+            date_end: Optional end date filter (ISO format, e.g., '2020-06-30')
 
         Returns:
             List of URL entries with metadata
         """
         query_url = f"https://index.commoncrawl.org/{crawl_id}-index?url={domain}&output=json"
+
+        # Add date range parameters if provided
+        params = {}
+        if date_start:
+            params["from"] = date_start
+        if date_end:
+            params["to"] = date_end
+
+        if params:
+            query_url += "&" + "&".join(f"{k}={v}" for k, v in params.items())
 
         self.logger.info(f"Querying CDX index: {query_url[:100]}...")
 

@@ -262,7 +262,12 @@ def build_database(logger) -> int:
 
             # Query CDX index
             logger.info("  [1/4] Querying CDX index...")
-            urls = cdx_client.query_index(crawl_id, domain_pattern)
+            urls = cdx_client.query_index(
+                crawl_id,
+                domain_pattern,
+                settings.crawls.date_start,
+                settings.crawls.date_end,
+            )
 
             if not urls:
                 logger.warning(f"  No URLs found for {domain_pattern}")

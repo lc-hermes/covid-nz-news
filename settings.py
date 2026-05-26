@@ -10,7 +10,7 @@ Or modified to customize the data collection:
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -132,6 +132,12 @@ class CrawlConfig:
             "CC-MAIN-2022-48",  # December 2022
         ]
     )
+
+    # Optional date range filter (ISO format dates)
+    # If set, only URLs within this date range will be extracted
+    # Example: date_start="2020-04-01", date_end="2020-06-30"
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
 
     # Limit for testing - set to None for full run
     max_warc_files_per_crawl: int | None = 2

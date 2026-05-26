@@ -43,7 +43,13 @@ class AsyncCDXClient:
         return self._semaphore
 
     async def query_urls(
-        self, crawl_id: str, domain: str, keywords: List[str], limit: int = 500
+        self,
+        crawl_id: str,
+        domain: str,
+        keywords: List[str],
+        limit: int = 500,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
     ) -> List[str]:
         """
         Query CDX server for URLs matching domain and keywords.
@@ -53,6 +59,8 @@ class AsyncCDXClient:
             domain: Target domain
             keywords: List of keywords to search for
             limit: Maximum URLs to return
+            date_start: Optional start date filter (ISO format, e.g., '2020-04-01')
+            date_end: Optional end date filter (ISO format, e.g., '2020-06-30')
 
         Returns:
             List of matching URLs
@@ -70,10 +78,17 @@ class AsyncCDXClient:
                     url = self.base_url.format(crawl_id=crawl_id, format="gz")
                     query = f"URL:{domain}"
 
+                    # Add date range parameters if provided
+                    params = {"url": query, "fl": "URL", "limit": limit}
+                    if date_start:
+                        params["from"] = date_start
+                    if date_end:
+                        params["to"] = date_end
+
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
                             url,
-                            params={"url": query, "fl": "URL", "limit": limit},
+                            params=params,
                             headers={"Accept-Encoding": "gzip"},
                             timeout=30,
                         ) as response:
@@ -123,6 +138,8 @@ class AsyncCDXClient:
         crawls: List[str],
         keywords: List[str],
         limit_per_domain: int = 500,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
     ) -> dict:
         """
         Query all domain-crawl combinations in parallel.
@@ -132,6 +149,8 @@ class AsyncCDXClient:
             crawls: List of crawl IDs
             keywords: List of keywords
             limit_per_domain: Max URLs per domain-crawl pair
+            date_start: Optional start date filter (ISO format)
+            date_end: Optional end date filter (ISO format)
 
         Returns:
             Dict mapping (domain, crawl_id) -> list of URLs
@@ -141,7 +160,9 @@ class AsyncCDXClient:
 
         for domain in domains:
             for crawl_id in crawls:
-                task = self.query_urls(crawl_id, domain, keywords, limit_per_domain)
+                task = self.query_urls(
+                    crawl_id, domain, keywords, limit_per_domain, date_start, date_end
+                )
                 tasks.append(((domain, crawl_id), task))
 
         # Process in batches to avoid overwhelming the server
@@ -157,7 +178,13 @@ class AsyncCDXClient:
 
         return results
 
-    def query_index(self, crawl_id: str, domain_pattern: str) -> List[Dict]:
+    def query_index(
+        self,
+        crawl_id: str,
+        domain_pattern: str,
+        date_start: Optional[str] = None,
+        date_end: Optional[str] = None,
+    ) -> List[Dict]:
         """
         Sync wrapper for async query - for compatibility.
 
