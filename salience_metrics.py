@@ -32,7 +32,7 @@ class SalienceMetrics:
         Returns:
             Polars DataFrame with columns: date, article_count
         """
-        df = self.db.table.to_polars()
+        df = self.db.table.read_polars()
 
         if df.height == 0:
             return pl.DataFrame({"date": [], "article_count": []})
@@ -55,7 +55,7 @@ class SalienceMetrics:
         Returns:
             Polars DataFrame with columns: source_domain, article_count
         """
-        df = self.db.table.to_polars()
+        df = self.db.table.read_polars()
 
         if df.height == 0:
             return pl.DataFrame({"source_domain": [], "article_count": []})
@@ -72,7 +72,7 @@ class SalienceMetrics:
         Returns:
             Polars DataFrame with columns: date, source_domain, article_count
         """
-        df = self.db.table.to_polars()
+        df = self.db.table.read_polars()
 
         if df.height == 0:
             return pl.DataFrame({"date": [], "source_domain": [], "article_count": []})
@@ -99,7 +99,7 @@ class SalienceMetrics:
         Returns:
             Dictionary with total articles, date range, sources, etc.
         """
-        df = self.db.table.to_polars()
+        df = self.db.table.read_polars()
 
         if df.height == 0:
             return {

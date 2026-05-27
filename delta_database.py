@@ -89,7 +89,7 @@ class DeltaNewsDatabase:
         content_hash = self._compute_content_hash(content)
 
         # Check for existing content hash
-        existing = self.table.to_polars().filter(pl.col("content_hash") == content_hash)
+        existing = self.table.read_polars().filter(pl.col("content_hash") == content_hash)
         if existing.height > 0:
             self.logger.debug(f"Skipping duplicate content: {url}")
             return False
@@ -128,7 +128,7 @@ class DeltaNewsDatabase:
 
         # Load existing content hashes for deduplication
         existing_hashes = set(
-            self.table.to_polars().select("content_hash").to_dict(as_series=False)["content_hash"]
+            self.table.read_polars().select("content_hash").to_dict(as_series=False)["content_hash"]
         )
 
         # Filter out duplicates and compute hashes
@@ -156,18 +156,18 @@ class DeltaNewsDatabase:
 
     def get_count(self) -> int:
         """Get total article count."""
-        return self.table.to_polars().height
+        return self.table.read_polars().height
 
     def get_stats_by_source(self) -> List[Tuple[str, int]]:
         """Get article counts grouped by source domain."""
-        df = self.table.to_polars().group_by("source_domain").agg(
+        df = self.table.read_polars().group_by("source_domain").agg(
             pl.col("url").count().alias("count")
         ).sort("count", descending=True)
         return list(df.iter_rows())
 
     def get_stats_by_language(self) -> List[Tuple[str, int]]:
         """Get article counts grouped by language."""
-        df = self.table.to_polars().group_by("language").agg(
+        df = self.table.read_polars().group_by("language").agg(
             pl.col("url").count().alias("count")
         ).sort("count", descending=True)
         return list(df.iter_rows())
@@ -191,7 +191,7 @@ class DeltaNewsDatabase:
         Returns:
             List of article dictionaries
         """
-        df = self.table.to_polars()
+        df = self.table.read_polars()
 
         # Apply ordering
         if order_by:
@@ -212,7 +212,7 @@ class DeltaNewsDatabase:
 
     def search_by_keyword(self, keyword: str, limit: int = 50) -> List[Dict]:
         """Search articles by keyword in title or content."""
-        df = self.table.to_polars()
+        df = self.table.read_polars()
 
         # Filter by keyword in title or content
         mask = (
@@ -233,7 +233,7 @@ class DeltaNewsDatabase:
         Returns:
             List of all article dictionaries
         """
-        df = self.table.to_polars()
+        df = self.table.read_polars()
 
         if columns:
             df = df.select(columns)
@@ -257,7 +257,7 @@ class DeltaNewsDatabase:
         Returns:
             List of article dictionaries
         """
-        df = self.table.to_polars()
+        df = self.table.read_polars()
 
         # Filter by date range
         mask = (
@@ -275,7 +275,7 @@ class DeltaNewsDatabase:
         table.optimize.compact()
         self.logger.info("Delta table optimized")
 
-    def vacuum(self, retention_hours: int = 24) -> int:
+    def vacuum(self, retention_hours: int = 24) -> List[str]:
         """
         Remove old files from Delta table.
 

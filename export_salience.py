@@ -9,7 +9,7 @@ Usage:
 import argparse
 import os
 
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 from salience_metrics import SalienceMetrics
 
 
