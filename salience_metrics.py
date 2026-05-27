@@ -1,6 +1,6 @@
-"""Progress tracking for COVID NZ News database building.
+"""Salience metrics for COVID NZ News database.
 
-Saves checkpoint state to allow resuming interrupted database builds.
+Calculates various salience metrics from the news database.
 """
 
 import logging
@@ -8,18 +8,18 @@ from typing import Optional
 
 import polars as pl
 
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 
 
 class SalienceMetrics:
     """Calculate salience metrics from the news database."""
 
-    def __init__(self, db: NewsDatabase, logger: Optional[logging.Logger] = None):
+    def __init__(self, db: DeltaNewsDatabase, logger: Optional[logging.Logger] = None):
         """
         Initialize with database connection.
 
         Args:
-            db: Connected NewsDatabase instance
+            db: DeltaNewsDatabase instance
             logger: Logger instance
         """
         self.db = db
@@ -32,13 +32,18 @@ class SalienceMetrics:
         Returns:
             Polars DataFrame with columns: date, article_count
         """
-        articles = self.db.query_all_articles()
+        df = self.db.table.to_polars()
 
-        if not articles:
+        if df.height == 0:
             return pl.DataFrame({"date": [], "article_count": []})
 
-        df = pl.DataFrame(articles)
-        df = df.with_columns(pl.col("crawl_date").str.slice(0, 10).alias("date"))
+        # Use timestamp or publish_date for date extraction
+        df = df.with_columns(
+            pl.when(pl.col("publish_date").is_not_null())
+            .then(pl.col("publish_date").str.slice(0, 10))
+            .otherwise(pl.col("timestamp").str.slice(0, 10))
+            .alias("date")
+        )
 
         result = df.group_by("date").agg(pl.col("date").count().alias("article_count"))
         return result.sort("date")
@@ -50,12 +55,11 @@ class SalienceMetrics:
         Returns:
             Polars DataFrame with columns: source_domain, article_count
         """
-        articles = self.db.query_all_articles()
+        df = self.db.table.to_polars()
 
-        if not articles:
+        if df.height == 0:
             return pl.DataFrame({"source_domain": [], "article_count": []})
 
-        df = pl.DataFrame(articles)
         result = df.group_by("source_domain").agg(
             pl.col("source_domain").count().alias("article_count")
         )
@@ -68,13 +72,18 @@ class SalienceMetrics:
         Returns:
             Polars DataFrame with columns: date, source_domain, article_count
         """
-        articles = self.db.query_all_articles()
+        df = self.db.table.to_polars()
 
-        if not articles:
+        if df.height == 0:
             return pl.DataFrame({"date": [], "source_domain": [], "article_count": []})
 
-        df = pl.DataFrame(articles)
-        df = df.with_columns(pl.col("crawl_date").str.slice(0, 10).alias("date"))
+        # Use timestamp or publish_date for date extraction
+        df = df.with_columns(
+            pl.when(pl.col("publish_date").is_not_null())
+            .then(pl.col("publish_date").str.slice(0, 10))
+            .otherwise(pl.col("timestamp").str.slice(0, 10))
+            .alias("date")
+        )
 
         result = (
             df.group_by("date", "source_domain")
@@ -90,9 +99,9 @@ class SalienceMetrics:
         Returns:
             Dictionary with total articles, date range, sources, etc.
         """
-        articles = self.db.query_all_articles()
+        df = self.db.table.to_polars()
 
-        if not articles:
+        if df.height == 0:
             return {
                 "total_articles": 0,
                 "unique_sources": 0,
@@ -101,8 +110,13 @@ class SalienceMetrics:
                 "days_covered": 0,
             }
 
-        df = pl.DataFrame(articles)
-        df = df.with_columns(pl.col("crawl_date").str.slice(0, 10).alias("date"))
+        # Use timestamp or publish_date for date extraction
+        df = df.with_columns(
+            pl.when(pl.col("publish_date").is_not_null())
+            .then(pl.col("publish_date").str.slice(0, 10))
+            .otherwise(pl.col("timestamp").str.slice(0, 10))
+            .alias("date")
+        )
 
         earliest = df["date"].min()
         latest = df["date"].max()
@@ -117,7 +131,7 @@ class SalienceMetrics:
         )
 
         return {
-            "total_articles": len(df),
+            "total_articles": df.height,
             "unique_sources": df["source_domain"].n_unique(),
             "date_earliest": str(earliest) if earliest else None,
             "date_latest": str(latest) if latest else None,

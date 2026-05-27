@@ -1,7 +1,7 @@
 """Export COVID NZ News metrics.
 
 This module provides a CLI entry point ``python -m export`` that reads the
-``covid_nz_news`` SQLite database and writes three CSV files:
+``covid_nz_news_delta`` Delta Lake table and writes three CSV files:
 
 * ``articles_per_day.csv`` – counts of articles per day
 * ``articles_per_source.csv`` – counts per source domain
@@ -12,7 +12,7 @@ is set to ``json`` (the default is ``csv``).  The JSON files contain a
 list of row dictionaries.
 
 The functions are deliberately lightweight and only depend on the existing
-``database`` and ``salience_metrics`` modules.
+``delta_database`` and ``salience_metrics`` modules.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import argparse
 import json
 from pathlib import Path
 
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 from salience_metrics import SalienceMetrics
 
 __all__ = ["export_to_csv_json", "main"]
@@ -31,8 +31,8 @@ def export_to_csv_json(db_path: str | Path, out_dir: str | Path, fmt: str = "csv
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    db = NewsDatabase(str(db_path))
-    db.connect()
+    db = DeltaNewsDatabase(str(db_path))
+    db.init_table()
     metrics = SalienceMetrics(db)
 
     daily = metrics.get_articles_per_day()
@@ -56,13 +56,12 @@ def export_to_csv_json(db_path: str | Path, out_dir: str | Path, fmt: str = "csv
     _write(source, "articles_per_source", fmt)
     _write(daily_source, "articles_per_source_per_day", fmt)
 
-    db.close()
     return total_rows
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export COVID NZ News metrics")
-    parser.add_argument("--db-path", default="covid_nz_news.db", help="SQLite database path")
+    parser.add_argument("--db-path", default="covid_nz_news_delta", help="Delta Lake table path")
     parser.add_argument("--output-dir", default="exports", help="Output directory")
     parser.add_argument(
         "--output-format", choices=["csv", "json"], default="csv", help="File format"

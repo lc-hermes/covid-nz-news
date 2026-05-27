@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from async_cdx_client import AsyncCDXClient
 from cdx_client import CDXClient
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 from logger import setup_logging
 from progress import ProgressManager
 from settings import settings
@@ -199,7 +199,8 @@ def build_database(logger) -> int:
         progress_manager.clear()
 
     # Initialize components
-    db = NewsDatabase(settings.database.path, logger)
+    db = DeltaNewsDatabase(settings.database.path, logger)
+    db.init_table()
 
     # Initialize CDX client based on mode
     if settings.use_async:
@@ -233,8 +234,8 @@ def build_database(logger) -> int:
         logger=logger,
     )
 
-    # Connect to database
-    db.connect()
+    # Connect to database (handled by init_table)
+    pass
 
     # Get remaining work
     remaining_work = progress_manager.get_remaining_work(
@@ -243,7 +244,6 @@ def build_database(logger) -> int:
 
     if not remaining_work:
         logger.info("All work already completed!")
-        db.close()
         return 0
 
     logger.info(f"Remaining work: {len(remaining_work)} crawl-domain pairs")
@@ -395,8 +395,6 @@ def build_database(logger) -> int:
 
         traceback.print_exc()
         return 1
-    finally:
-        db.close()
 
 
 def main():

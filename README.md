@@ -1,10 +1,10 @@
 # NZ COVID News Database
 
-A production-ready tool to build a local SQLite database of New Zealand news articles about COVID-19 from Common Crawl web archive. Designed for creating comprehensive COVID salience timelines.
+A production-ready tool to build a local Delta Lake database of New Zealand news articles about COVID-19 from Common Crawl web archive. Designed for creating comprehensive COVID salience timelines.
 
 ## Overview
 
-This project extracts full-text articles from major NZ news sources during the COVID-19 pandemic (2020-2022) and stores them in a SQLite database for analysis.
+This project extracts full-text articles from major NZ news sources during the COVID-19 pandemic (2020-2022) and stores them in a Delta Lake table for analysis.
 
 ### Key Features
 
@@ -15,6 +15,9 @@ This project extracts full-text articles from major NZ news sources during the C
 - **Easy configuration**: Single Python config file (no CLI args)
 - **Content deduplication**: MD5 hash-based deduplication with normalization
 - **Publish date extraction**: Extracts actual publish dates from HTML metadata
+- **Delta Lake storage**: ACID transactions, time travel, schema evolution
+- **Polars backend**: Fast DataFrame operations with lazy evaluation
+- **Partitioned storage**: Efficient filtering by source domain
 - **Visualization tools**: Built-in plotting for salience timeline analysis
 - **Progress tracking**: TQDM progress bars for long-running builds
 
@@ -124,31 +127,34 @@ settings.crawls.max_warc_files_per_crawl = 10  # None = no limit
 
 ## Database Schema
 
-```sql
-CREATE TABLE articles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT UNIQUE NOT NULL,
-    title TEXT,
-    content TEXT,
-    content_hash TEXT,
-    source_domain TEXT,
-    crawl_id TEXT,
-    timestamp TEXT,
-    language TEXT,
-    status_code TEXT,
-    publish_date TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+The Delta Lake table uses the following schema:
+
+```
+┌─────────────────┬───────┐
+│ url             │ Utf8  │
+│ title           │ Utf8  │
+│ content         │ Utf8  │
+│ content_hash    │ Utf8  │
+│ source_domain   │ Utf8  │
+│ crawl_id        │ Utf8  │
+│ timestamp       │ Utf8  │
+│ language        │ Utf8  │
+│ status_code     │ Utf8  │
+│ publish_date    │ Utf8  │
+└─────────────────┴───────┘
 ```
 
-### Indexes
+### Partitioning
 
-- `idx_url` - Fast URL lookup
-- `idx_source` - Group by news source
-- `idx_timestamp` - Timeline analysis
-- `idx_language` - Language filtering
-- `idx_publish_date` - Sort by actual publish date
-- `idx_content_hash` - Deduplication lookup
+The table is partitioned by `source_domain` for efficient filtering by news source.
+
+### Delta Lake Features
+
+- **ACID transactions**: Safe concurrent writes
+- **Time travel**: Query historical versions with `dt.version()`
+- **Schema evolution**: Add columns without migration
+- **Optimization**: `dt.optimize.compact()` to merge small files
+- **Vacuum**: `dt.vacuum(retention_hours)` to remove old files
 
 ## Visualization
 
@@ -180,10 +186,10 @@ uv pip install -e ".[viz]"
 ## Querying the Database
 
 ```python
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 
-db = NewsDatabase("covid_nz_news.db")
-db.connect()
+db = DeltaNewsDatabase("covid_nz_news_delta")
+db.init_table()
 
 # Get article count
 print(f"Total articles: {db.get_count()}")
@@ -200,14 +206,23 @@ for article in articles:
 # Get recent articles
 recent = db.get_recent_articles(limit=10)
 
-# Custom query
-articles = db.query_articles(
-    where="source_domain = ?",
-    params=("stuff.co.nz",),
-    limit=50
+# Get articles by date range
+articles = db.get_articles_by_date_range(
+    start_date="2020-03-01",
+    end_date="2020-04-30",
+    limit=1000
 )
 
-db.close()
+# Query all articles with specific columns
+all_articles = db.query_all_articles(
+    columns=["url", "title", "source_domain", "publish_date"]
+)
+
+# Get Delta table version (for time travel)
+print(f"Current version: {db.version()}")
+
+# Get table history
+history = db.history(limit=10)
 ```
 
 ## Visualization
@@ -230,14 +245,14 @@ uv pip install matplotlib
 
 ## Analysis Tools
 
-Use the built-in salience metrics module:
+Use the built-in salience metrics module with Delta Lake:
 
 ```python
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 from salience_metrics import SalienceMetrics
 
-db = NewsDatabase("covid_nz_news.db")
-db.connect()
+db = DeltaNewsDatabase("covid_nz_news_delta")
+db.init_table()
 
 metrics = SalienceMetrics(db)
 
@@ -253,36 +268,40 @@ print(by_source)
 stats = metrics.get_total_statistics()
 print(f"Total articles: {stats['total_articles']}")
 print(f"Date range: {stats['date_earliest']} to {stats['date_latest']}")
-
-db.close()
 ```
 
-```python
-import sqlite3
-from collections import defaultdict
-from datetime import datetime
+Or use Polars directly for custom analysis:
 
-conn = sqlite3.connect("covid_nz_news.db")
-cursor = conn.cursor()
+```python
+from delta_database import DeltaNewsDatabase
+
+db = DeltaNewsDatabase("covid_nz_news_delta")
+db.init_table()
+
+# Get the Polars DataFrame
+df = db.table.to_polars()
 
 # Articles per day
-cursor.execute("""
-    SELECT timestamp, COUNT(*) as count
-    FROM articles
-    WHERE timestamp IS NOT NULL
-    GROUP BY timestamp
-    ORDER BY timestamp
-""")
+daily = df.group_by("timestamp").agg(
+    pl.col("url").count().alias("count")
+).sort("timestamp")
 
-daily_counts = defaultdict(int)
-for timestamp, count in cursor.fetchall():
-    daily_counts[timestamp] = count
+print(daily)
 
-# Print timeline
-for date in sorted(daily_counts.keys()):
-    print(f"{date}: {daily_counts[date]} articles")
+# Articles per source
+by_source = df.group_by("source_domain").agg(
+    pl.col("url").count().alias("count")
+).sort("count", descending=True)
 
-conn.close()
+print(by_source)
+
+# Filter by date range
+filtered = df.filter(
+    (pl.col("publish_date") >= "2020-03-01") &
+    (pl.col("publish_date") <= "2020-04-30")
+)
+
+print(f"Articles in date range: {filtered.height}")
 ```
 
 ## Project Structure
@@ -292,7 +311,7 @@ covid-nz-news/
 ├── build_database.py    # Main entry point
 ├── settings.py          # Configuration (importable)
 ├── cdx_client.py        # Common Crawl CDX client
-├── database.py          # SQLite operations
+├── delta_database.py    # Delta Lake + Polars operations
 ├── logger.py            # Logging setup
 ├── warc_downloader.py   # WARC file downloader
 ├── warc_extractor.py    # WARC file parser
@@ -331,14 +350,16 @@ Total coverage: ~2 years of NZ COVID news coverage.
 
 1. **Publish date extraction**: Not all articles have publish dates in HTML metadata; falls back to crawl date
 2. **Deduplication sensitivity**: MD5 hash-based deduplication may miss near-duplicates with minor content changes
-3. **No export**: Data is in SQLite only (no CSV/JSON export yet)
+3. **Delta Lake storage**: Requires more disk space than SQLite for small datasets (overhead of partitioned storage)
 
 ## Future Improvements
 
-- [ ] Export to CSV/JSON
+- [ ] Export to CSV/JSON using Polars (`df.write_csv()`, `df.write_json()`)
 - [ ] Advanced salience metrics (topic modeling, sentiment analysis)
 - [ ] Interactive Jupyter notebook for exploration
 - [ ] API endpoint for querying database
+- [ ] Delta Lake time travel examples (query historical versions)
+- [ ] Schema evolution examples (add columns without migration)
 
 ## License
 
