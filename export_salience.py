@@ -1,73 +1,95 @@
-"""Export salience metrics to CSV for analysis.
-
-Command-line tool to calculate and export COVID salience metrics from the database.
-
-Usage:
-    uv run export_salience.py [--output-dir ./exports]
-"""
+"""Export salience metrics to CSV."""
 
 import argparse
-import os
+import csv
+import logging
+from typing import List, Optional
 
 from delta_database import DeltaNewsDatabase
 from salience_metrics import SalienceMetrics
 
 
-def main():
+def export_salience_metrics(
+    db_path: str,
+    output_file: str,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """
+    Export salience metrics to CSV file.
+
+    Args:
+        db_path: Path to Delta Lake table
+        output_file: Output CSV file path
+        logger: Logger instance
+    """
+    log = logger or logging.getLogger("covid_nz_news.export_salience")
+
+    # Initialize database
+    db = DeltaNewsDatabase(db_path, logger=log)
+    metrics = SalienceMetrics(db, logger=log)
+
+    log.info(f"Exporting salience metrics to {output_file}")
+
+    # Calculate all metrics
+    source_salience = metrics.get_source_salience()
+    language_salience = metrics.get_language_salience()
+    temporal_salience = metrics.get_temporal_salience()
+
+    # Write to CSV
+    with open(output_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        # Source salience
+        writer.writerow(["# Source Salience"])
+        if source_salience:
+            writer.writerow(source_salience.keys())
+            for row in zip(*source_salience.values(), strict=False):
+                writer.writerow(row)
+
+        writer.writerow([])  # Empty row
+
+        # Language salience
+        writer.writerow(["# Language Salience"])
+        if language_salience:
+            writer.writerow(language_salience.keys())
+            for row in zip(*language_salience.values(), strict=False):
+                writer.writerow(row)
+
+        writer.writerow([])  # Empty row
+
+        # Temporal salience
+        writer.writerow(["# Temporal Salience"])
+        if temporal_salience:
+            writer.writerow(temporal_salience.keys())
+            for row in zip(*temporal_salience.values(), strict=False):
+                writer.writerow(row)
+
+    log.info(f"Exported salience metrics to {output_file}")
+
+
+def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Export COVID salience metrics from database")
+    parser = argparse.ArgumentParser(description="Export salience metrics to CSV")
     parser.add_argument(
         "--db-path",
-        type=str,
-        default="covid_nz_news.db",
-        help="Path to SQLite database (default: covid_nz_news.db)",
+        default="covid_nz_news_delta",
+        help="Path to Delta Lake table",
     )
     parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="exports",
-        help="Output directory for CSV files (default: exports)",
+        "--output",
+        default="salience_metrics.csv",
+        help="Output CSV file path",
     )
+
     args = parser.parse_args()
 
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
-    # Connect to database
-    db = NewsDatabase(args.db_path)
-    db.connect()
-
-    # Calculate metrics
-    metrics = SalienceMetrics(db)
-
-    # Export articles per day
-    daily_df = metrics.get_articles_per_day()
-    daily_path = os.path.join(args.output_dir, "articles_per_day.csv")
-    daily_df.write_csv(daily_path)
-    print(f"Exported daily counts to {daily_path}")
-
-    # Export articles per source
-    source_df = metrics.get_articles_per_source()
-    source_path = os.path.join(args.output_dir, "articles_per_source.csv")
-    source_df.write_csv(source_path)
-    print(f"Exported source counts to {source_path}")
-
-    # Export articles per source per day
-    daily_source_df = metrics.get_articles_per_source_per_day()
-    daily_source_path = os.path.join(args.output_dir, "articles_per_source_per_day.csv")
-    daily_source_df.write_csv(daily_source_path)
-    print(f"Exported daily source counts to {daily_source_path}")
-
-    # Print summary
-    total_articles = len(daily_df)
-    print("\nSummary:")
-    print(f"  Total articles: {total_articles}")
-    print(f"  Date range: {daily_df['date'][0]} to {daily_df['date'][-1]}")
-    print(f"  Days with coverage: {len(daily_df)}")
-    print(f"  Average articles/day: {total_articles / len(daily_df):.1f}")
-    print(f"  Sources: {len(source_df)}")
-
-    db.close()
+    export_salience_metrics(args.db_path, args.output)
 
 
 if __name__ == "__main__":

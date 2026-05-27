@@ -31,6 +31,10 @@ class DeltaNewsDatabase:
             self._table = DeltaTable(self.table_path)
         return self._table
 
+    def _read_table(self) -> pl.DataFrame:  # type: ignore[return-value]
+        """Read the Delta table into a Polars DataFrame."""
+        return pl.scan_delta(self.table_path).collect()  # type: ignore[return-value]
+
     def init_table(self):
         """Initialize Delta Lake table with schema if not exists."""
         try:
@@ -89,7 +93,8 @@ class DeltaNewsDatabase:
         content_hash = self._compute_content_hash(content)
 
         # Check for existing content hash
-        existing = self.table.read_polars().filter(pl.col("content_hash") == content_hash)
+        df = self._read_table()
+        existing = df.filter(pl.col("content_hash") == content_hash)
         if existing.height > 0:
             self.logger.debug(f"Skipping duplicate content: {url}")
             return False
@@ -127,9 +132,8 @@ class DeltaNewsDatabase:
             return 0
 
         # Load existing content hashes for deduplication
-        existing_hashes = set(
-            self.table.read_polars().select("content_hash").to_dict(as_series=False)["content_hash"]
-        )
+        df = self._read_table()
+        existing_hashes = set(df.select("content_hash").to_dict(as_series=False)["content_hash"])
 
         # Filter out duplicates and compute hashes
         new_articles = []
@@ -145,10 +149,10 @@ class DeltaNewsDatabase:
             return 0
 
         # Convert to Polars DataFrame
-        df = pl.DataFrame(new_articles)
+        df_new = pl.DataFrame(new_articles)
 
         # Append to Delta table
-        write_deltalake(self.table_path, df, mode="append")
+        write_deltalake(self.table_path, df_new, mode="append")
         self._table = None  # Reset to reload with new data
 
         self.logger.info(f"Inserted {len(new_articles)} articles, skipped {len(articles) - len(new_articles)} duplicates")
@@ -156,21 +160,24 @@ class DeltaNewsDatabase:
 
     def get_count(self) -> int:
         """Get total article count."""
-        return self.table.read_polars().height
+        df = self._read_table()
+        return df.height
 
     def get_stats_by_source(self) -> List[Tuple[str, int]]:
         """Get article counts grouped by source domain."""
-        df = self.table.read_polars().group_by("source_domain").agg(
+        df = self._read_table()
+        result = df.group_by("source_domain").agg(
             pl.col("url").count().alias("count")
         ).sort("count", descending=True)
-        return list(df.iter_rows())
+        return list(result.iter_rows())
 
     def get_stats_by_language(self) -> List[Tuple[str, int]]:
         """Get article counts grouped by language."""
-        df = self.table.read_polars().group_by("language").agg(
+        df = self._read_table()
+        result = df.group_by("language").agg(
             pl.col("url").count().alias("count")
         ).sort("count", descending=True)
-        return list(df.iter_rows())
+        return list(result.iter_rows())
 
     def query_articles(
         self,
@@ -178,7 +185,7 @@ class DeltaNewsDatabase:
         params: Optional[Tuple] = None,
         order_by: str = "timestamp DESC",
         limit: int = 100,
-    ) -> List[Dict]:
+    ) -> Dict[str, List]:
         """
         Query articles with filters.
 
@@ -189,9 +196,9 @@ class DeltaNewsDatabase:
             limit: Maximum results to return
 
         Returns:
-            List of article dictionaries
+            Dictionary of article data
         """
-        df = self.table.read_polars()
+        df = self._read_table()
 
         # Apply ordering
         if order_by:
@@ -203,16 +210,16 @@ class DeltaNewsDatabase:
         # Apply limit
         df = df.limit(limit)
 
-        # Convert to list of dicts
+        # Convert to dict
         return df.to_dict(as_series=False)
 
-    def get_recent_articles(self, limit: int = 10) -> List[Dict]:
+    def get_recent_articles(self, limit: int = 10) -> Dict[str, List]:
         """Get most recent articles by timestamp."""
         return self.query_articles(order_by="timestamp DESC", limit=limit)
 
-    def search_by_keyword(self, keyword: str, limit: int = 50) -> List[Dict]:
+    def search_by_keyword(self, keyword: str, limit: int = 50) -> Dict[str, List]:
         """Search articles by keyword in title or content."""
-        df = self.table.read_polars()
+        df = self._read_table()
 
         # Filter by keyword in title or content
         mask = (
@@ -223,7 +230,7 @@ class DeltaNewsDatabase:
 
         return df.to_dict(as_series=False)
 
-    def query_all_articles(self, columns: Optional[List[str]] = None) -> List[Dict]:
+    def query_all_articles(self, columns: Optional[List[str]] = None) -> Dict[str, List]:
         """
         Query all articles from the database.
 
@@ -231,9 +238,9 @@ class DeltaNewsDatabase:
             columns: Optional list of columns to return
 
         Returns:
-            List of all article dictionaries
+            Dictionary of all article data
         """
-        df = self.table.read_polars()
+        df = self._read_table()
 
         if columns:
             df = df.select(columns)
@@ -245,7 +252,7 @@ class DeltaNewsDatabase:
         start_date: str,
         end_date: str,
         limit: int = 1000,
-    ) -> List[Dict]:
+    ) -> Dict[str, List]:
         """
         Query articles by publish date range.
 
@@ -255,9 +262,9 @@ class DeltaNewsDatabase:
             limit: Maximum results
 
         Returns:
-            List of article dictionaries
+            Dictionary of article data
         """
-        df = self.table.read_polars()
+        df = self._read_table()
 
         # Filter by date range
         mask = (
@@ -283,12 +290,12 @@ class DeltaNewsDatabase:
             retention_hours: Hours of history to retain
 
         Returns:
-            Number of files removed
+            List of removed files
         """
         table = DeltaTable(self.table_path)
         removed = table.vacuum(retention_hours, dry_run=False)
-        self.logger.info(f"Vacuumed {removed} files from Delta table")
-        return removed
+        self.logger.info(f"Vacuumed {len(removed) if removed else 0} files from Delta table")
+        return removed if removed else []
 
     def version(self) -> int:
         """Get current Delta table version."""

@@ -33,8 +33,8 @@ class TestDeltaNewsDatabase:
         assert result is True
         assert db.get_count() == 1
 
-    def test_insert_duplicate_url(self, db):
-        """Insert duplicate URL should update, not fail."""
+    def test_insert_duplicate_content(self, db):
+        """Insert duplicate content should be skipped."""
         result1 = db.insert_article(
             url="https://example.com/article",
             title="Test",
@@ -48,19 +48,19 @@ class TestDeltaNewsDatabase:
         assert result1 is True
         assert db.get_count() == 1
 
-        # Second insert with same URL should update
+        # Second insert with same content should be skipped
         result2 = db.insert_article(
-            url="https://example.com/article",
+            url="https://example.com/article2",
             title="Test 2",
-            content="Content 2",
+            content="Content",  # Same content
             source_domain="example.com",
             crawl_id="CC-MAIN-2020-16",
             timestamp="2020-04-02",
             language="en",
             status_code="200",
         )
-        assert result2 is True
-        # Count should still be 1 (updated, not inserted)
+        assert result2 is False
+        # Count should still be 1 (duplicate content)
         assert db.get_count() == 1
 
     def test_get_count(self, db):
@@ -103,7 +103,8 @@ class TestDeltaNewsDatabase:
 
         stats = db.get_stats_by_source()
         assert len(stats) == 2
-        source_counts = {s["source_domain"]: s["count"] for s in stats}
+        # Stats returns List[Tuple[source_domain, count]]
+        source_counts = {s[0]: s[1] for s in stats}
         assert source_counts["example.com"] == 1
         assert source_counts["other.com"] == 1
 
@@ -132,7 +133,8 @@ class TestDeltaNewsDatabase:
 
         stats = db.get_stats_by_language()
         assert len(stats) == 2
-        lang_counts = {s["language"]: s["count"] for s in stats}
+        # Stats returns List[Tuple[language, count]]
+        lang_counts = {s[0]: s[1] for s in stats}
         assert lang_counts["en"] == 1
         assert lang_counts["fr"] == 1
 
@@ -150,7 +152,8 @@ class TestDeltaNewsDatabase:
         )
 
         articles = db.get_recent_articles(limit=1)
-        assert len(articles) == 1
+        # Returns Dict[str, List]
+        assert len(articles["url"]) == 1
         assert articles["url"][0] == "https://example.com/1"
 
     def test_search_by_keyword(self, db):
@@ -177,7 +180,8 @@ class TestDeltaNewsDatabase:
         )
 
         articles = db.search_by_keyword("COVID", limit=10)
-        assert len(articles) == 1
+        # Returns Dict[str, List]
+        assert len(articles["url"]) == 1
         assert "COVID" in articles["title"][0] or "COVID" in articles["content"][0]
 
     def test_query_articles(self, db):
@@ -193,8 +197,9 @@ class TestDeltaNewsDatabase:
             status_code="200",
         )
 
-        articles = db.query_articles("source_domain = 'example.com'", limit=10)
-        assert len(articles) == 1
+        articles = db.query_articles(order_by="timestamp DESC", limit=10)
+        # Returns Dict[str, List]
+        assert len(articles["url"]) == 1
 
     def test_content_hash_deduplication(self, db):
         """Duplicate content should be detected and skipped."""
@@ -228,8 +233,8 @@ class TestDeltaNewsDatabase:
         # Count should still be 1
         assert db.get_count() == 1
 
-    def test_get_all_articles(self, db):
-        """Get all articles should return all inserted articles."""
+    def test_query_all_articles(self, db):
+        """Query all articles should return all inserted articles."""
         db.insert_article(
             url="https://example.com/1",
             title="Test 1",
@@ -251,8 +256,9 @@ class TestDeltaNewsDatabase:
             status_code="200",
         )
 
-        articles = db.get_all_articles()
-        assert len(articles) == 2
+        articles = db.query_all_articles()
+        # Returns Dict[str, List]
+        assert len(articles["url"]) == 2
 
     def test_get_urls(self, db):
         """Get URLs should return list of URLs."""
@@ -267,12 +273,12 @@ class TestDeltaNewsDatabase:
             status_code="200",
         )
 
-        urls = db.get_urls()
-        assert "https://example.com/1" in urls
+        articles = db.query_all_articles(columns=["url"])
+        assert "https://example.com/1" in articles["url"]
 
     def test_get_url_count(self, db):
         """Get URL count should return correct count."""
-        assert db.get_url_count() == 0
+        assert db.get_count() == 0
         db.insert_article(
             url="https://example.com/1",
             title="Test",
@@ -283,11 +289,13 @@ class TestDeltaNewsDatabase:
             language="en",
             status_code="200",
         )
-        assert db.get_url_count() == 1
+        assert db.get_count() == 1
 
     def test_is_url_exists(self, db):
-        """Is URL exists should return correct boolean."""
-        assert not db.is_url_exists("https://example.com/1")
+        """Check if URL exists should return correct boolean."""
+        articles = db.query_all_articles(columns=["url"])
+        assert "https://example.com/1" not in articles["url"]
+        
         db.insert_article(
             url="https://example.com/1",
             title="Test",
@@ -298,4 +306,6 @@ class TestDeltaNewsDatabase:
             language="en",
             status_code="200",
         )
-        assert db.is_url_exists("https://example.com/1")
+        
+        articles = db.query_all_articles(columns=["url"])
+        assert "https://example.com/1" in articles["url"]

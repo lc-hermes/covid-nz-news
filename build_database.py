@@ -374,12 +374,12 @@ def build_database(logger) -> int:
         if db.get_count() > 0:
             logger.info("\nSample recent article:")
             recent = db.get_recent_articles(limit=1)
-            if recent:
-                article = recent[0]
-                logger.info(f"  Title: {article['title']}")
-                logger.info(f"  URL: {article['url']}")
-                logger.info(f"  Source: {article['source_domain']}")
-                logger.info(f"  Content preview: {article['content'][:200]}...")
+            if recent and recent.get("title"):
+                logger.info(f"  Title: {recent['title'][0]}")
+                logger.info(f"  URL: {recent['url'][0]}")
+                logger.info(f"  Source: {recent['source_domain'][0]}")
+                content_preview = recent['content'][0][:200] if recent['content'][0] else ""
+                logger.info(f"  Content preview: {content_preview}...")
 
         logger.info("=" * 70)
         logger.info(f"Database saved to: {settings.database.path}")

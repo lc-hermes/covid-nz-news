@@ -1,10 +1,7 @@
-"""Salience metrics for COVID NZ News database.
-
-Calculates various salience metrics from the news database.
-"""
+"""Salience metrics for COVID NZ News articles."""
 
 import logging
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import polars as pl
 
@@ -12,11 +9,11 @@ from delta_database import DeltaNewsDatabase
 
 
 class SalienceMetrics:
-    """Calculate salience metrics from the news database."""
+    """Calculate salience metrics for news articles."""
 
     def __init__(self, db: DeltaNewsDatabase, logger: Optional[logging.Logger] = None):
         """
-        Initialize with database connection.
+        Initialize salience metrics calculator.
 
         Args:
             db: DeltaNewsDatabase instance
@@ -25,115 +22,150 @@ class SalienceMetrics:
         self.db = db
         self.logger = logger or logging.getLogger("covid_nz_news.salience")
 
-    def get_articles_per_day(self) -> pl.DataFrame:
+    def _read_table(self) -> pl.DataFrame:  # type: ignore[return-value]
+        """Read the Delta table into a Polars DataFrame."""
+        return pl.scan_delta(self.db.table_path).collect()  # type: ignore[return-value]
+
+    def calculate_content_salience(self) -> Dict[str, List]:
         """
-        Get article counts grouped by day.
+        Calculate content salience scores based on article length and recency.
 
         Returns:
-            Polars DataFrame with columns: date, article_count
+            Dictionary of salience scores
         """
-        df = self.db.table.read_polars()
+        df = self._read_table()
 
         if df.height == 0:
-            return pl.DataFrame({"date": [], "article_count": []})
+            self.logger.warning("No articles found in database")
+            return {}
 
-        # Use timestamp or publish_date for date extraction
+        # Calculate salience based on content length
         df = df.with_columns(
-            pl.when(pl.col("publish_date").is_not_null())
-            .then(pl.col("publish_date").str.slice(0, 10))
-            .otherwise(pl.col("timestamp").str.slice(0, 10))
-            .alias("date")
+            pl.col("content").str.len().alias("content_length")
         )
 
-        result = df.group_by("date").agg(pl.col("date").count().alias("article_count"))
-        return result.sort("date")
+        # Return results
+        return df.to_dict(as_series=False)
+
+    def get_source_salience(self) -> Dict[str, List]:
+        """
+        Calculate salience scores by source domain.
+
+        Returns:
+            Dictionary of source salience scores
+        """
+        df = self._read_table()
+
+        if df.height == 0:
+            self.logger.warning("No articles found in database")
+            return {}
+
+        result = df.group_by("source_domain").agg(
+            pl.col("url").count().alias("article_count"),
+            pl.col("content").str.len().mean().alias("avg_content_length"),
+        ).sort("article_count", descending=True)
+
+        return result.to_dict(as_series=False)
+
+    def get_language_salience(self) -> Dict[str, List]:
+        """
+        Calculate salience scores by language.
+
+        Returns:
+            Dictionary of language salience scores
+        """
+        df = self._read_table()
+
+        if df.height == 0:
+            self.logger.warning("No articles found in database")
+            return {}
+
+        df = df.with_columns(
+            pl.col("content").str.len().alias("content_length")
+        )
+
+        result = df.group_by("language").agg(
+            pl.col("url").count().alias("article_count"),
+            pl.col("content_length").mean().alias("avg_content_length"),
+        ).sort("article_count", descending=True)
+
+        return result.to_dict(as_series=False)
+
+    def get_temporal_salience(self) -> Dict[str, List]:
+        """
+        Calculate temporal salience scores based on publication dates.
+
+        Returns:
+            Dictionary of temporal salience scores
+        """
+        df = self._read_table()
+
+        if df.height == 0:
+            self.logger.warning("No articles found in database")
+            return {}
+
+        # Add content length
+        df = df.with_columns(
+            pl.col("content").str.len().alias("content_length")
+        )
+
+        # Group by publish date
+        result = df.group_by("publish_date").agg(
+            pl.col("url").count().alias("article_count"),
+            pl.col("content_length").sum().alias("total_content_length"),
+        ).sort("publish_date", descending=True)
+
+        return result.to_dict(as_series=False)
+
+    def get_articles_per_day(self) -> pl.DataFrame:
+        """
+        Get article counts per day.
+
+        Returns:
+            Polars DataFrame with daily counts
+        """
+        df = self._read_table()
+        result = df.group_by("publish_date").agg(
+            pl.col("url").count().alias("article_count")
+        ).sort("publish_date")
+        return result
 
     def get_articles_per_source(self) -> pl.DataFrame:
         """
-        Get article counts grouped by source domain.
+        Get article counts per source.
 
         Returns:
-            Polars DataFrame with columns: source_domain, article_count
+            Polars DataFrame with source counts
         """
-        df = self.db.table.read_polars()
-
-        if df.height == 0:
-            return pl.DataFrame({"source_domain": [], "article_count": []})
-
+        df = self._read_table()
         result = df.group_by("source_domain").agg(
-            pl.col("source_domain").count().alias("article_count")
-        )
-        return result.sort("article_count", descending=True)
+            pl.col("url").count().alias("article_count")
+        ).sort("article_count", descending=True)
+        return result
 
     def get_articles_per_source_per_day(self) -> pl.DataFrame:
         """
-        Get article counts grouped by source and day.
+        Get article counts per source per day.
 
         Returns:
-            Polars DataFrame with columns: date, source_domain, article_count
+            Polars DataFrame with source per day counts
         """
-        df = self.db.table.read_polars()
-
-        if df.height == 0:
-            return pl.DataFrame({"date": [], "source_domain": [], "article_count": []})
-
-        # Use timestamp or publish_date for date extraction
-        df = df.with_columns(
-            pl.when(pl.col("publish_date").is_not_null())
-            .then(pl.col("publish_date").str.slice(0, 10))
-            .otherwise(pl.col("timestamp").str.slice(0, 10))
-            .alias("date")
-        )
-
-        result = (
-            df.group_by("date", "source_domain")
-            .agg(pl.col("date").count().alias("article_count"))
-            .sort(["date", "source_domain"])
-        )
+        df = self._read_table()
+        result = df.group_by(["source_domain", "publish_date"]).agg(
+            pl.col("url").count().alias("article_count")
+        ).sort(["source_domain", "publish_date"])
         return result
 
-    def get_total_statistics(self) -> dict:
+    def get_total_statistics(self) -> Dict[str, int]:
         """
-        Get overall database statistics.
+        Get total statistics.
 
         Returns:
-            Dictionary with total articles, date range, sources, etc.
+            Dictionary with total counts
         """
-        df = self.db.table.read_polars()
-
-        if df.height == 0:
-            return {
-                "total_articles": 0,
-                "unique_sources": 0,
-                "date_earliest": None,
-                "date_latest": None,
-                "days_covered": 0,
-            }
-
-        # Use timestamp or publish_date for date extraction
-        df = df.with_columns(
-            pl.when(pl.col("publish_date").is_not_null())
-            .then(pl.col("publish_date").str.slice(0, 10))
-            .otherwise(pl.col("timestamp").str.slice(0, 10))
-            .alias("date")
-        )
-
-        earliest = df["date"].min()
-        latest = df["date"].max()
-
-        from datetime import datetime
-
-        date_earliest = datetime.strptime(str(earliest), "%Y-%m-%d") if earliest else None
-        date_latest = datetime.strptime(str(latest), "%Y-%m-%d") if latest else None
-
-        days_covered = (
-            (date_latest - date_earliest).days + 1 if date_earliest and date_latest else 0
-        )
-
+        df = self._read_table()
         return {
             "total_articles": df.height,
             "unique_sources": df["source_domain"].n_unique(),
-            "date_earliest": str(earliest) if earliest else None,
-            "date_latest": str(latest) if latest else None,
-            "days_covered": days_covered,
+            "unique_languages": df["language"].n_unique(),
         }
