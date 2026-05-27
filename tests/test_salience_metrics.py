@@ -19,7 +19,7 @@ class TestSalienceMetrics:
         db_path = tmp_path / "test_delta"
         db = DeltaNewsDatabase(str(db_path), MagicMock())
         db.init_table()
-        
+
         # Insert test data
         db.insert_article(
             url="https://example.com/article1",
@@ -54,7 +54,7 @@ class TestSalienceMetrics:
             status_code="200",
             publish_date="2020-03-16",
         )
-        
+
         return db
 
     @pytest.fixture
@@ -103,7 +103,7 @@ class TestSalienceMetrics:
         db_path = tmp_path / "empty_delta"
         db = DeltaNewsDatabase(str(db_path), MagicMock())
         db.init_table()
-        
+
         metrics = SalienceMetrics(db, MagicMock())
 
         daily = metrics.get_articles_per_day()

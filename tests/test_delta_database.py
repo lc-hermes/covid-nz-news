@@ -295,7 +295,7 @@ class TestDeltaNewsDatabase:
         """Check if URL exists should return correct boolean."""
         articles = db.query_all_articles(columns=["url"])
         assert "https://example.com/1" not in articles["url"]
-        
+
         db.insert_article(
             url="https://example.com/1",
             title="Test",
@@ -306,6 +306,6 @@ class TestDeltaNewsDatabase:
             language="en",
             status_code="200",
         )
-        
+
         articles = db.query_all_articles(columns=["url"])
         assert "https://example.com/1" in articles["url"]
