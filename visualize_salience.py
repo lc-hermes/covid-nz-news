@@ -12,7 +12,7 @@ Usage:
 import argparse
 import os
 
-from database import NewsDatabase
+from delta_database import DeltaNewsDatabase
 from salience_metrics import SalienceMetrics
 
 
@@ -22,8 +22,8 @@ def main():
     parser.add_argument(
         "--db-path",
         type=str,
-        default="covid_nz_news.db",
-        help="Path to SQLite database (default: covid_nz_news.db)",
+        default="covid_nz_news_delta",
+        help="Path to Delta Lake table directory (default: covid_nz_news_delta)",
     )
     parser.add_argument(
         "--output-dir",
@@ -37,9 +37,9 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Connect to database
-    print(f"Connecting to database: {args.db_path}")
-    db = NewsDatabase(args.db_path)
-    db.connect()
+    print(f"Connecting to Delta Lake table: {args.db_path}")
+    db = DeltaNewsDatabase(args.db_path)
+    db.init_table()
 
     # Calculate metrics
     print("Calculating salience metrics...")
@@ -56,7 +56,6 @@ def main():
     # Check if we have data
     if stats["total_articles"] == 0:
         print("\nNo data in database. Run build_database.py first.")
-        db.close()
         return
 
     # Create plots
@@ -72,7 +71,6 @@ def main():
     except ImportError as e:
         print(f"Visualization libraries not installed: {e}")
         print("Install with: uv pip install matplotlib plotnine")
-        db.close()
         return
 
     # Plot 1: Timeline
@@ -83,8 +81,6 @@ def main():
 
     # Plot 3: Stacked timeline
     create_stacked_timeline_plot(metrics, args.output_dir)
-
-    db.close()
 
     print(f"\nAll visualizations saved to {args.output_dir}/")
     print("Generated files:")
