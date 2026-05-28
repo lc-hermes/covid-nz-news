@@ -18,6 +18,7 @@ dependencies = [
     "aiohttp>=3.9.0",
     "readability-lxml>=0.8.0",
     "tqdm>=4.66.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.optional-dependencies]
