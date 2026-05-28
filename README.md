@@ -261,6 +261,58 @@ print(f"Total articles: {len(dataset['train'])}")
 print(dataset['train'][0])  # First article
 ```
 
+## LLM Classification
+
+Classify articles into categories using a local LLM server (OpenAI-compatible API):
+
+```bash
+# Install LLM dependencies
+uv pip install -e ".[llm]"
+
+# Classify first 100 articles
+uv run llm_pipeline.py --limit 100
+
+# Classify all articles with resume support
+uv run llm_pipeline.py --resume
+
+# Use a different LLM server
+uv run llm_pipeline.py --llm-url http://localhost:8000 --model llama-2-7b
+```
+
+### Default Categories
+
+The pipeline classifies articles into these categories:
+- `health_outcomes` - Cases, deaths, hospitalizations, ICU
+- `vaccination` - Vaccine rollout, efficacy, mandates
+- `lockdown_measures` - Restrictions, alert levels, curfews
+- `border_policy` - Quarantine, managed isolation, travel
+- `economic_impact` - Business closures, job losses, support
+- `public_behavior` - Mask mandates, social distancing
+- `government_response` - Policy announcements, cabinet decisions
+- `science_research` - Variants, studies, scientific findings
+- `international` - Global context, other countries
+- `miscellaneous` - Other COVID-related content
+
+### Using the Classifications
+
+```python
+import polars as pl
+
+# Load classifications
+df = pl.read_parquet("llm_classifications.parquet")
+
+# Filter by category
+vaccine_articles = df.filter(pl.col("category") == "vaccination")
+
+# Count by category
+counts = df.group_by("category").agg(pl.col("url").count())
+print(counts)
+
+# Join with original data for full article access
+original = pl.scan_delta("covid_nz_news_delta").collect()
+merged = original.join(df, on="url", how="left")
+```
+
 ## Visualization
 
 Generate plots of the COVID salience timeline:
@@ -344,21 +396,24 @@ print(f"Articles in date range: {filtered.height}")
 
 ```
 covid-nz-news/
-├── build_database.py    # Main entry point
-├── export_huggingface.py # Export to HuggingFace dataset format
-├── generate_trend_plot.py # Generate trend visualization
-├── settings.py          # Configuration (importable)
-├── cdx_client.py        # Common Crawl CDX client
-├── delta_database.py    # Delta Lake + Polars operations
-├── logger.py            # Logging setup
-├── warc_downloader.py   # WARC file downloader
-├── warc_extractor.py    # WARC file parser
-├── .env.example         # Environment variable template
-├── pyproject.toml       # Dependencies
-├── README.md            # This file
+├── build_database.py       # Main entry point
+├── export_huggingface.py   # Export to HuggingFace dataset format
+├── generate_trend_plot.py  # Generate trend visualization
+├── llm_pipeline.py         # LLM classification pipeline
+├── llm_config.py           # LLM configuration
+├── llm_client.py           # LLM client for OpenAI-compatible servers
+├── settings.py             # Configuration (importable)
+├── cdx_client.py           # Common Crawl CDX client
+├── delta_database.py       # Delta Lake + Polars operations
+├── logger.py               # Logging setup
+├── warc_downloader.py      # WARC file downloader
+├── warc_extractor.py       # WARC file parser
+├── .env.example            # Environment variable template
+├── pyproject.toml          # Dependencies
+├── README.md               # This file
 └── .github/
     └── workflows/
-        └── ci.yml       # CI pipeline
+        └── ci.yml          # CI pipeline
 ```
 
 ## Quality Assurance
@@ -393,6 +448,7 @@ Total coverage: ~2 years of NZ COVID news coverage.
 ## Future Improvements
 
 - [x] Export to HuggingFace dataset format (see `export_huggingface.py`)
+- [x] LLM classification pipeline (see `llm_pipeline.py`)
 - [ ] Export to CSV/JSON using Polars (`df.write_csv()`, `df.write_json()`)
 - [ ] Advanced salience metrics (topic modeling, sentiment analysis)
 - [ ] Interactive Jupyter notebook for exploration
