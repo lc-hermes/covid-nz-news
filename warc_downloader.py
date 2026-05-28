@@ -64,19 +64,19 @@ class WARCDownloader:
                 with urllib.request.urlopen(warc_url, timeout=self.timeout) as response:
                     content_length = int(response.headers.get("content-length", 0))
                     self.logger.info(f"  Content length: {content_length:,} bytes")
-                    
+
                     # Stream directly to disk in chunks
                     with open(cache_path, "wb") as f:
                         downloaded = 0
                         chunk_size = 8 * 1024 * 1024  # 8MB chunks
-                        
+
                         while True:
                             chunk = response.read(chunk_size)
                             if not chunk:
                                 break
                             f.write(chunk)
                             downloaded += len(chunk)
-                            
+
                             # Progress logging every 10MB
                             if downloaded % (10 * 1024 * 1024) < len(chunk):
                                 self.logger.info(f"  Downloaded: {downloaded:,} bytes")

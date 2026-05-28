@@ -31,25 +31,25 @@ def main():
     """Monitor server every 10 minutes."""
     logger.info("Starting CommonCrawl index server monitor")
     logger.info("Will notify when server is back online")
-    
+
     last_status = None
     check_count = 0
-    
+
     while True:
         check_count += 1
         is_up, message = check_server()
         current_status = "UP" if is_up else "DOWN"
-        
+
         # Only log on status change
         if last_status != current_status:
             logger.info(f"Status changed: {current_status} - {message}")
             if is_up and last_status == "DOWN":
                 logger.info("✅ SERVER IS BACK ONLINE!")
-                logger.info(f"   Tested endpoint: https://index.commoncrawl.org/collinfo.json")
-                logger.info(f"   You can now run: uv run build_database.py")
+                logger.info("   Tested endpoint: https://index.commoncrawl.org/collinfo.json")
+                logger.info("   You can now run: uv run build_database.py")
         elif check_count % 6 == 0:  # Log every hour
             logger.info(f"Still {current_status} - {message}")
-        
+
         last_status = current_status
         time.sleep(600)  # Check every 10 minutes
 
