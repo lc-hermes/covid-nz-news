@@ -1,10 +1,11 @@
 """Generate line graph of article counts over time."""
 
-import polars as pl
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from datetime import datetime, timedelta
 import random
+from datetime import datetime, timedelta
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import polars as pl
 
 # Load the Delta Lake table
 table_path = "covid_nz_news_delta"
@@ -15,12 +16,12 @@ print(f"Total articles: {len(df)}")
 if len(df) == 0:
     print("No articles in database. Using demo data to showcase visualization.")
     print("Run build_database.py to collect real articles from Common Crawl.")
-    
+
     # Generate 30 days of demo data
     dates = []
     counts = []
     base_date = datetime(2020, 3, 1)
-    
+
     for i in range(30):
         date = base_date + timedelta(days=i)
         # Simulate COVID news trend (spike in March-April 2020)
@@ -30,10 +31,10 @@ if len(df) == 0:
             count = random.randint(30, 60)  # Peak
         else:
             count = random.randint(15, 35)  # Declining
-        
+
         dates.append(date.strftime("%Y-%m-%d"))
         counts.append(count)
-    
+
     daily_counts = pl.DataFrame({
         "publish_date": dates,
         "count": counts
@@ -43,14 +44,14 @@ else:
     # Filter out empty publish dates
     df = df.filter(pl.col("publish_date").str.len_chars() > 0)
     print(f"Articles with publish_date: {len(df)}")
-    
+
     if len(df) == 0:
         print("No articles with valid publish_date. Using demo data.")
         # Generate demo data
         dates = []
         counts = []
         base_date = datetime(2020, 3, 1)
-        
+
         for i in range(30):
             date = base_date + timedelta(days=i)
             if i < 10:
@@ -59,10 +60,10 @@ else:
                 count = random.randint(30, 60)
             else:
                 count = random.randint(15, 35)
-            
+
             dates.append(date.strftime("%Y-%m-%d"))
             counts.append(count)
-        
+
         daily_counts = pl.DataFrame({
             "publish_date": dates,
             "count": counts
@@ -103,7 +104,7 @@ if is_demo:
     plt.annotate("Demo data - run build_database.py to collect real articles",
                 xy=(0.02, 0.98), xycoords='axes fraction',
                 fontsize=9, style='italic',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+                bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5})
 
 # Tight layout and save
 plt.tight_layout()
