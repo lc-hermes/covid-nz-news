@@ -47,46 +47,58 @@ class CDXClient:
         Returns:
             List of URL entries with metadata
         """
-        query_url = f"https://index.commoncrawl.org/{crawl_id}-index?url={domain}&output=json"
-
-        # Add date range parameters if provided
-        params = {}
+        # Try multiple CDX index endpoints
+        endpoints = [
+            f"https://index.commoncrawl.org/{crawl_id}-index?url={{domain}}&output=json",
+            f"https://index.commoncrawl.org/collection-{crawl_id}/cdx?url={{domain}}&output=json",
+        ]
+        
+        # Add date range parameters
+        params_str = ""
         if date_start:
-            params["from"] = date_start
+            params_str += f"&from={date_start}"
         if date_end:
-            params["to"] = date_end
-
-        if params:
-            query_url += "&" + "&".join(f"{k}={v}" for k, v in params.items())
-
-        self.logger.info(f"Querying CDX index: {query_url[:100]}...")
-
-        for attempt in range(self.retry_attempts):
-            try:
-                with urllib.request.urlopen(query_url, timeout=self.timeout) as response:
-                    data = response.read().decode("utf-8")
-                    urls = [json.loads(line) for line in data.strip().split("\n") if line]
-                    self.logger.info(f"Found {len(urls)} URLs")
-                    return urls
-
-            except urllib.error.URLError as e:
-                self.logger.warning(
-                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
-                )
-            except json.JSONDecodeError as e:
-                self.logger.error(f"Failed to parse JSON response: {e}")
-                return []
-            except Exception as e:
-                self.logger.warning(
-                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
-                )
-
-            if attempt < self.retry_attempts - 1:
-                delay = self.retry_delay * (2**attempt)
-                self.logger.info(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
-
-        self.logger.error(f"Failed after {self.retry_attempts} attempts")
+            params_str += f"&to={date_end}"
+        
+        self.logger.info(f"Querying CDX index for {domain} in {crawl_id}...")
+        
+        for endpoint_template in endpoints:
+            query_url = endpoint_template.format(domain=domain) + params_str
+            self.logger.debug(f"Trying: {query_url[:100]}...")
+            
+            for attempt in range(self.retry_attempts):
+                try:
+                    with urllib.request.urlopen(query_url, timeout=self.timeout) as response:
+                        data = response.read().decode("utf-8")
+                        urls = [json.loads(line) for line in data.strip().split("\n") if line]
+                        if urls:
+                            self.logger.info(f"Found {len(urls)} URLs from endpoint {endpoints.index(endpoint_template) + 1}")
+                            return urls
+                        self.logger.warning(f"Empty result from endpoint {endpoints.index(endpoint_template) + 1}")
+                        break
+                
+                except urllib.error.URLError as e:
+                    self.logger.warning(
+                        f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
+                    )
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"Failed to parse JSON response: {e}")
+                    break
+                except Exception as e:
+                    self.logger.warning(
+                        f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
+                    )
+                
+                if attempt < self.retry_attempts - 1:
+                    delay = self.retry_delay * (2**attempt)
+                    self.logger.info(f"Retrying in {delay} seconds...")
+                    time.sleep(delay)
+            else:
+                continue
+            break
+        else:
+            self.logger.error(f"Failed to query all CDX endpoints for {domain}")
+        
         return []
 
     def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:

@@ -1,6 +1,7 @@
 """Async CDX server client with rate limiting."""
 
 import asyncio
+import json
 import logging
 from typing import Dict, List, Optional
 
@@ -12,7 +13,7 @@ class AsyncCDXClient:
 
     def __init__(
         self,
-        base_url: str = "https://index.commoncrawl.org/collection-CC-MAIN-2020-{crawl_id}/url.{format}",
+        base_url: str = "https://index.commoncrawl.org/{crawl_id}-index?url={query}",
         max_retries: int = 3,
         retry_delay: float = 1.0,
         rate_limit: float = 10.0,  # requests per second
@@ -75,33 +76,35 @@ class AsyncCDXClient:
                         f"Querying CDX for {domain} in {crawl_id} (attempt {attempt + 1})"
                     )
 
-                    url = self.base_url.format(crawl_id=crawl_id, format="gz")
-                    query = f"URL:{domain}"
-
-                    # Add date range parameters if provided
-                    params = {"url": query, "fl": "URL", "limit": limit}
+                    # Build query URL with parameters
+                    params_str = f"limit={limit}&output=json"
                     if date_start:
-                        params["from"] = date_start
+                        params_str += f"&from={date_start}"
                     if date_end:
-                        params["to"] = date_end
-
+                        params_str += f"&to={date_end}"
+                    
+                    url = self.base_url.format(crawl_id=crawl_id, query=f"{domain}&{params_str}")
+                    
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
                             url,
-                            params=params,
-                            headers={"Accept-Encoding": "gzip"},
-                            timeout=30,
+                            timeout=aiohttp.ClientTimeout(total=30),
                         ) as response:
                             if response.status == 200:
                                 text = await response.text()
-                                candidate_urls = [
-                                    line.strip()
-                                    for line in text.strip().split("\n")
-                                    if line.strip()
-                                ]
+                                # Parse JSON lines from CDX response
+                                candidate_urls = []
+                                for line in text.strip().split("\n"):
+                                    if line.strip():
+                                        try:
+                                            entry = json.loads(line)
+                                            url = entry.get("url", "")
+                                            if url:
+                                                candidate_urls.append(url)
+                                        except json.JSONDecodeError:
+                                            continue
 
                                 # Filter by keywords
-                                " ".join(keywords).lower()
                                 for url in candidate_urls:
                                     if any(kw in url.lower() for kw in keywords):
                                         urls.append(url)
@@ -186,14 +189,23 @@ class AsyncCDXClient:
         date_end: Optional[str] = None,
     ) -> List[Dict]:
         """
-        Sync wrapper for async query - for compatibility.
-
-        This is a blocking call that runs the async method.
+        Sync wrapper for async query - for compatibility with sync client.
+        
+        Queries all URLs for a domain pattern without keyword filtering.
         """
-        # This is a simplified version - in production, we'd want to query all at once
-        # For now, just return empty list as placeholder
-        self.logger.warning("query_index not implemented for async client")
-        return []
+        # Run the async query without keywords to get all URLs
+        import asyncio
+        
+        async def _query():
+            # Use empty keywords to get all URLs
+            urls = await self.query_urls(
+                crawl_id, domain_pattern, keywords=[], limit=10000,
+                date_start=date_start, date_end=date_end
+            )
+            # Convert to dict format matching sync client
+            return [{"url": url} for url in urls]
+        
+        return asyncio.run(_query())
 
     def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
         """Filter URLs by keywords."""
@@ -201,5 +213,15 @@ class AsyncCDXClient:
 
     def group_by_warc(self, urls: List[Dict]) -> Dict[str, List[Dict]]:
         """Group URLs by WARC file."""
-        # Simplified - just return all URLs in one group
-        return {"all_urls": urls}
+        # For async client, we need to extract WARC file from URL
+        # This is a simplified version - in production we'd parse the full CDX record
+        warc_groups: Dict[str, List[Dict]] = {}
+        for url_entry in urls:
+            url = url_entry.get("url", "")
+            # Use the URL itself as the key for now
+            # In a full implementation, we'd extract the WARC filename from CDX metadata
+            warc_key = url  # Placeholder - would need full CDX record
+            if warc_key not in warc_groups:
+                warc_groups[warc_key] = []
+            warc_groups[warc_key].append(url_entry)
+        return warc_groups

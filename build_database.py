@@ -21,7 +21,6 @@ Runtime options (set in settings.py):
 import sys
 from datetime import datetime
 
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from async_cdx_client import AsyncCDXClient
@@ -32,141 +31,6 @@ from progress import ProgressManager
 from settings import settings
 from warc_downloader import WARCDownloader
 from warc_extractor import WARCExtractor
-
-
-def extract_publish_date(soup, url: str = "") -> str:
-    """
-    Extract publish date from HTML metadata with multiple heuristics.
-
-    Args:
-        soup: BeautifulSoup parsed HTML
-        url: Article URL (for logging/debugging)
-
-    Returns:
-        ISO format date string or empty string if not found
-    """
-
-    # Try various meta tags for publish date
-    date_tags = [
-        "article:published_time",
-        "og:article:published_time",
-        "datePublished",
-        "article:date",
-        "og:article:published_time",
-        "news:publication_date",
-        "dc.date",
-        "dc.date.created",
-        "dc.date.issued",
-        "pubdate",
-        "publish_date",
-    ]
-
-    # Priority order: try property attribute first, then name attribute
-    for tag_name in date_tags:
-        # Try property attribute (Open Graph, schema.org)
-        meta = soup.find("meta", property=tag_name)
-        if meta and meta.get("content"):
-            content = meta["content"]
-            parsed = _parse_date(content)
-            if parsed:
-                return parsed
-
-        # Try name attribute
-        meta = soup.find("meta", attrs={"name": tag_name})
-        if meta and meta.get("content"):
-            content = meta["content"]
-            parsed = _parse_date(content)
-            if parsed:
-                return parsed
-
-    # Try time tag with datetime attribute
-    time_tag = soup.find("time", attrs={"datetime": True})
-    if time_tag:
-        datetime_str = time_tag.get("datetime")
-        if datetime_str:
-            parsed = _parse_date(datetime_str)
-            if parsed:
-                return parsed
-
-    # Try schema.org structured data
-    script_tag = soup.find("script", type="application/ld+json")
-    if script_tag:
-        try:
-            import json
-
-            data = json.loads(script_tag.string)
-            if isinstance(data, dict):
-                # Try datePublished
-                date_pub = data.get("datePublished", "")
-                if date_pub:
-                    parsed = _parse_date(date_pub)
-                    if parsed:
-                        return parsed
-                # Try dateModified as fallback
-                date_mod = data.get("dateModified", "")
-                if date_mod:
-                    parsed = _parse_date(date_mod)
-                    if parsed:
-                        return parsed
-        except (json.JSONDecodeError, AttributeError):
-            pass
-
-    # Try article:modified_time as last resort
-    meta = soup.find("meta", property="article:modified_time")
-    if meta and meta.get("content"):
-        parsed = _parse_date(meta["content"])
-        if parsed:
-            return parsed
-
-    return ""
-
-
-def _parse_date(date_str: str) -> str:
-    """
-    Parse various date formats and return ISO format.
-
-    Args:
-        date_str: Date string in various formats
-
-    Returns:
-        ISO format date string or empty string if parsing fails
-    """
-    from datetime import datetime
-
-    if not date_str:
-        return ""
-
-    # Common date formats to try
-    formats = [
-        "%Y-%m-%dT%H:%M:%S%z",  # ISO 8601 with timezone
-        "%Y-%m-%dT%H:%M:%SZ",  # ISO 8601 with Z
-        "%Y-%m-%dT%H:%M:%S",  # ISO 8601 without timezone
-        "%Y-%m-%d %H:%M:%S",  # MySQL datetime
-        "%Y-%m-%d",  # ISO date
-        "%d/%m/%Y %H:%M:%S",  # European format
-        "%d/%m/%Y",  # European date
-        "%m/%d/%Y %H:%M:%S",  # US format
-        "%m/%d/%Y",  # US date
-    ]
-
-    # Normalize the date string
-    date_str = date_str.replace("Z", "+00:00").strip()
-
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(date_str, fmt)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            continue
-
-    # Try fromisoformat as fallback (handles many edge cases)
-    try:
-        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        pass
-
-    return ""
 
 
 def build_database(logger) -> int:
@@ -303,6 +167,9 @@ def build_database(logger) -> int:
                 logger.info(f"  Limited to {max_files} WARC files (testing mode)")
 
             articles_inserted = 0
+            batch_articles = []
+            batch_size = 50  # Insert in batches of 50
+            
             for file_idx, (filename, url_entries) in tqdm(
                 enumerate(warc_files.items(), 1),
                 total=len(warc_files),
@@ -325,29 +192,47 @@ def build_database(logger) -> int:
 
                 logger.info(f"      Extracted {len(articles)} articles")
 
-                # Save to database with progress bar
-                for article in tqdm(articles, desc="  Inserting", leave=False):
+                # Collect articles for batch insert
+                for article in articles:
                     url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
 
-                    # Try to extract publish date from HTML
+                    # Extract publish date from WARC timestamp (HTML parsing removed for memory efficiency)
                     publish_date = ""
-                    if article.get("html_content"):
-                        soup = BeautifulSoup(article["html_content"], "lxml")
-                        publish_date = extract_publish_date(soup, article["url"])
+                    # Convert WARC timestamp to ISO format if available
+                    if url_entry.get("timestamp"):
+                        ts = url_entry["timestamp"]
+                        # WARC timestamp format: 20200415123045
+                        if len(ts) >= 15:
+                            try:
+                                publish_date = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
+                            except (IndexError, ValueError):
+                                pass
 
-                    if db.insert_article(
-                        article["url"],
-                        article["title"],
-                        article["content"],
-                        article["source_domain"],
-                        crawl_id,
-                        url_entry.get("timestamp", ""),
-                        article["language"],
-                        article["status_code"],
-                        publish_date,
-                    ):
-                        total_articles += 1
-                        articles_inserted += 1
+                    batch_articles.append({
+                        "url": article["url"],
+                        "title": article["title"],
+                        "content": article["content"],
+                        "source_domain": article["source_domain"],
+                        "crawl_id": crawl_id,
+                        "timestamp": url_entry.get("timestamp", ""),
+                        "language": article["language"],
+                        "status_code": article["status_code"],
+                        "publish_date": publish_date,
+                    })
+
+                    # Flush batch when it reaches batch_size
+                    if len(batch_articles) >= batch_size:
+                        inserted = db.insert_batch(batch_articles)
+                        total_articles += inserted
+                        articles_inserted += inserted
+                        batch_articles = []
+
+            # Insert remaining articles
+            if batch_articles:
+                inserted = db.insert_batch(batch_articles)
+                total_articles += inserted
+                articles_inserted += inserted
+                logger.info(f"  Inserted final batch of {len(batch_articles)} articles")
 
             # Save checkpoint after each crawl-domain pair
             progress_manager.mark_completed(crawl_id, domain_pattern, articles_inserted)

@@ -140,7 +140,7 @@ class CrawlConfig:
     date_end: Optional[str] = None
 
     # Limit for testing - set to None for full run
-    max_warc_files_per_crawl: int | None = 2
+    max_warc_files_per_crawl: int | None = None
 
 
 class Settings:

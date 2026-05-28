@@ -41,7 +41,7 @@ class WARCDownloader:
 
     def download(self, filename: str) -> Optional[str]:
         """
-        Download WARC file with caching.
+        Download WARC file with caching and streaming.
 
         Args:
             filename: WARC filename (e.g., 'CC-MAIN-2020-16/CC-MAIN-2020-16-warc00000.12345.warc.gz')
@@ -60,15 +60,30 @@ class WARCDownloader:
 
         for attempt in range(self.retry_attempts):
             try:
+                # Stream download to avoid loading entire file into memory
                 with urllib.request.urlopen(warc_url, timeout=self.timeout) as response:
-                    warc_data = response.read()
+                    content_length = int(response.headers.get("content-length", 0))
+                    self.logger.info(f"  Content length: {content_length:,} bytes")
+                    
+                    # Stream directly to disk in chunks
+                    with open(cache_path, "wb") as f:
+                        downloaded = 0
+                        chunk_size = 8 * 1024 * 1024  # 8MB chunks
+                        
+                        while True:
+                            chunk = response.read(chunk_size)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            # Progress logging every 10MB
+                            if downloaded % (10 * 1024 * 1024) < len(chunk):
+                                self.logger.info(f"  Downloaded: {downloaded:,} bytes")
 
-                with open(cache_path, "wb") as f:
-                    f.write(warc_data)
+                self._store_cache_metadata(cache_path, filename, downloaded)
 
-                self._store_cache_metadata(cache_path, filename, len(warc_data))
-
-                self.logger.info(f"Downloaded {len(warc_data):,} bytes")
+                self.logger.info(f"Downloaded {downloaded:,} bytes")
                 return cache_path
 
             except urllib.error.URLError as e:
