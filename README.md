@@ -225,6 +225,42 @@ print(f"Current version: {db.version()}")
 history = db.history(limit=10)
 ```
 
+## Export to HuggingFace
+
+Export the database as a HuggingFace dataset for sharing and publishing:
+
+```bash
+# Install HuggingFace dependencies
+uv pip install -e ".[huggingface]"
+
+# Export locally
+uv run export_huggingface.py
+
+# Push to HuggingFace Hub
+HF_TOKEN=your_token uv run export_huggingface.py --push --repo-name your-username/covid-nz-news
+```
+
+This creates a dataset in the standard HuggingFace format that can be:
+- Loaded directly with `datasets.load_dataset()`
+- Published to the HuggingFace Hub
+- Used with any ML framework (PyTorch, TensorFlow, etc.)
+
+### Using the exported dataset
+
+```python
+from datasets import load_dataset
+
+# Load from local path
+dataset = load_dataset("covid_nz_news_dataset", data_dir="covid_nz_news_dataset")
+
+# Or load from HuggingFace Hub
+dataset = load_dataset("lc-hermes/covid-nz-news")
+
+# Access data
+print(f"Total articles: {len(dataset['train'])}")
+print(dataset['train'][0])  # First article
+```
+
 ## Visualization
 
 Generate plots of the COVID salience timeline:
@@ -309,6 +345,8 @@ print(f"Articles in date range: {filtered.height}")
 ```
 covid-nz-news/
 ├── build_database.py    # Main entry point
+├── export_huggingface.py # Export to HuggingFace dataset format
+├── generate_trend_plot.py # Generate trend visualization
 ├── settings.py          # Configuration (importable)
 ├── cdx_client.py        # Common Crawl CDX client
 ├── delta_database.py    # Delta Lake + Polars operations
@@ -354,6 +392,7 @@ Total coverage: ~2 years of NZ COVID news coverage.
 
 ## Future Improvements
 
+- [x] Export to HuggingFace dataset format (see `export_huggingface.py`)
 - [ ] Export to CSV/JSON using Polars (`df.write_csv()`, `df.write_json()`)
 - [ ] Advanced salience metrics (topic modeling, sentiment analysis)
 - [ ] Interactive Jupyter notebook for exploration

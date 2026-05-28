@@ -32,6 +32,9 @@ viz = [
     "matplotlib>=3.7.0",
     "plotnine>=0.12.0",
 ]
+huggingface = [
+    "datasets>=2.14.0",
+]
 
 [project.scripts]
 covid-nz-news = "build_database:main"
