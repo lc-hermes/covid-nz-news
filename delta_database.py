@@ -69,6 +69,12 @@ class DeltaNewsDatabase:
         normalized = re.sub(r"\s+", " ", content.lower()).strip()
         return hashlib.md5(normalized.encode("utf-8")).hexdigest()
 
+    def _check_duplicate(self, content_hash: str) -> bool:
+        """Check if content hash already exists in database."""
+        df = self._read_table()
+        existing = df.filter(pl.col("content_hash") == content_hash)
+        return existing.height > 0
+
     def insert_article(
         self,
         url: str,
@@ -96,9 +102,7 @@ class DeltaNewsDatabase:
         content_hash = self._compute_content_hash(content)
 
         # Check for existing content hash
-        df = self._read_table()
-        existing = df.filter(pl.col("content_hash") == content_hash)
-        if existing.height > 0:
+        if self._check_duplicate(content_hash):
             self.logger.debug(f"Skipping duplicate content: {url}")
             return False
 

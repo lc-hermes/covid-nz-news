@@ -55,8 +55,9 @@ class TestDatabaseConfig:
     """Test database configuration."""
 
     def test_database_path_is_valid(self):
-        """Database path should be a valid path."""
-        assert settings.database.path.endswith(".db") or "/" in settings.database.path
+        """Database path should be a valid path (SQLite .db or Delta Lake directory)."""
+        # Accept SQLite (.db) or Delta Lake directory paths
+        assert settings.database.path.endswith(".db") or "/" in settings.database.path or "." not in settings.database.path
 
     def test_cache_directory_exists_or_creatable(self):
         """Cache directory should exist or be creatable."""

@@ -167,8 +167,8 @@ def build_database(logger) -> int:
                 logger.info(f"  Limited to {max_files} WARC files (testing mode)")
 
             articles_inserted = 0
-            batch_articles = []
-            batch_size = 50  # Insert in batches of 50
+            batch_buffer = []
+            BATCH_SIZE = 100  # Flush every 100 articles
 
             for file_idx, (filename, url_entries) in tqdm(
                 enumerate(warc_files.items(), 1),
@@ -192,8 +192,8 @@ def build_database(logger) -> int:
 
                 logger.info(f"      Extracted {len(articles)} articles")
 
-                # Collect articles for batch insert
-                for article in articles:
+                # Process articles with batch buffering
+                for article in tqdm(articles, desc="  Processing", leave=False):
                     url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
 
                     # Extract publish date from WARC timestamp (HTML parsing removed for memory efficiency)
@@ -208,7 +208,8 @@ def build_database(logger) -> int:
                             except (IndexError, ValueError):
                                 pass
 
-                    batch_articles.append({
+                    # Add to batch buffer
+                    batch_buffer.append({
                         "url": article["url"],
                         "title": article["title"],
                         "content": article["content"],
@@ -220,25 +221,30 @@ def build_database(logger) -> int:
                         "publish_date": publish_date,
                     })
 
-                    # Flush batch when it reaches batch_size
-                    if len(batch_articles) >= batch_size:
-                        inserted = db.insert_batch(batch_articles)
+                    # Flush batch when full
+                    if len(batch_buffer) >= BATCH_SIZE:
+                        inserted = db.insert_batch(batch_buffer)
                         total_articles += inserted
                         articles_inserted += inserted
-                        batch_articles = []
+                        batch_buffer = []
 
-            # Insert remaining articles
-            if batch_articles:
-                inserted = db.insert_batch(batch_articles)
-                total_articles += inserted
-                articles_inserted += inserted
-                logger.info(f"  Inserted final batch of {len(batch_articles)} articles")
+                # Flush remaining articles
+                if batch_buffer:
+                    inserted = db.insert_batch(batch_buffer)
+                    total_articles += inserted
+                    articles_inserted += inserted
+                    batch_buffer = []
 
             # Save checkpoint after each crawl-domain pair
             progress_manager.mark_completed(crawl_id, domain_pattern, articles_inserted)
             processed_pairs += 1
 
             logger.info(f"  Completed: {processed_pairs}/{len(remaining_work)} pairs")
+
+            # Optimize Delta table periodically (every 5 pairs)
+            if processed_pairs % 5 == 0:
+                logger.info("  Optimizing Delta table...")
+                db.optimize()
 
         # Summary
         logger.info(f"\n{'=' * 70}")
