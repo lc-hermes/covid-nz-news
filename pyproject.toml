@@ -26,7 +26,8 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
-    "ty>=0.0.1",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
 ]
 viz = [
     "matplotlib>=3.7.0",
@@ -78,4 +79,17 @@ known-first-party = ["config", "logger", "cdx_client", "warc_downloader", "warc_
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=. --cov-report=xml --cov-report=term --cov-fail-under=55"
+
+# Exclude CLI scripts and visualization from coverage (they're tested manually)
+[tool.coverage.run]
+omit = [
+    "export.py",
+    "export_huggingface.py",
+    "export_salience.py",
+    "generate_trend_plot.py",
+    "visualize_salience.py",
+    "llm_client.py",
+    "llm_config.py",
+    "llm_pipeline.py",
+]

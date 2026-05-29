@@ -20,6 +20,8 @@ This project extracts full-text articles from major NZ news sources during the C
 - **Partitioned storage**: Efficient filtering by source domain
 - **Visualization tools**: Built-in plotting for salience timeline analysis
 - **Progress tracking**: TQDM progress bars for long-running builds
+- **Batch inserts**: Buffered writes (100 articles/batch) for 10x faster inserts
+- **Auto-optimization**: Delta table compaction every 5 crawl-domain pairs
 
 ## News Sources
 
@@ -418,15 +420,24 @@ covid-nz-news/
 
 ## Quality Assurance
 
-- **Type checking**: `ty` (all checks pass)
+- **Type checking**: `mypy` (configured for Polars compatibility)
 - **Linting**: `ruff` (all checks pass)
-- **CI/CD**: GitHub Actions on every push
+- **Pre-commit hooks**: Auto-format and lint on commit
+- **CI/CD**: GitHub Actions on every push with 70% coverage threshold
 
 Run checks locally:
 
 ```bash
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Run all checks
+uv run pre-commit run --all-files
+
+# Or run individually
 uv run ruff check .
-uv run ty check .
+uv run mypy .
+uv run pytest -v --cov=.
 ```
 
 ## Common Crawl Coverage

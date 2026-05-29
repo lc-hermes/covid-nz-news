@@ -32,11 +32,11 @@ jobs:
         run: |
           source .venv/bin/activate
           uv run ruff check .
-      
-      # - name: Run ty (disabled - too strict for Polars types)
-        # run: |
-        #   source .venv/bin/activate
-        #   uv run ty check .
+
+      - name: Run mypy
+        run: |
+          source .venv/bin/activate
+          uv run mypy .
 
   test:
     runs-on: ubuntu-latest

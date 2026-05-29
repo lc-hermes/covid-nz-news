@@ -17,7 +17,7 @@ from typing import List, Optional
 class DatabaseConfig:
     """Database configuration."""
 
-    path: str = "covid_nz_news.db"
+    path: str = "covid_nz_news_delta"
     checkpoint_file: str = "build_progress.json"
 
 
@@ -71,7 +71,6 @@ class NewsSourceConfig:
             "*.3news.co.nz/",  # 3News
             "*.one-news.co.nz/",  # One News
             "*.biznews.co.nz/",  # BizzNews
-            "*.stuff.co.nz/business/",  # Stuff Business
         ]
     )
 
