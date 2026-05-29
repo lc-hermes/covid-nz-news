@@ -82,9 +82,9 @@ class AsyncCDXClient:
                         params_str += f"&from={date_start}"
                     if date_end:
                         params_str += f"&to={date_end}"
-                    
+
                     url = self.base_url.format(crawl_id=crawl_id, query=f"{domain}&{params_str}")
-                    
+
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
                             url,
@@ -190,12 +190,12 @@ class AsyncCDXClient:
     ) -> List[Dict]:
         """
         Sync wrapper for async query - for compatibility with sync client.
-        
+
         Queries all URLs for a domain pattern without keyword filtering.
         """
         # Run the async query without keywords to get all URLs
         import asyncio
-        
+
         async def _query():
             # Use empty keywords to get all URLs
             urls = await self.query_urls(
@@ -204,7 +204,7 @@ class AsyncCDXClient:
             )
             # Convert to dict format matching sync client
             return [{"url": url} for url in urls]
-        
+
         return asyncio.run(_query())
 
     def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:

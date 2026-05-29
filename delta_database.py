@@ -83,7 +83,7 @@ class DeltaNewsDatabase:
     ) -> bool:
         """
         Insert an article with deduplication.
-        
+
         NOTE: For better performance, use insert_batch() for multiple articles.
         This method reads the entire table for deduplication check.
 

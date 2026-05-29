@@ -169,7 +169,7 @@ def build_database(logger) -> int:
             articles_inserted = 0
             batch_articles = []
             batch_size = 50  # Insert in batches of 50
-            
+
             for file_idx, (filename, url_entries) in tqdm(
                 enumerate(warc_files.items(), 1),
                 total=len(warc_files),

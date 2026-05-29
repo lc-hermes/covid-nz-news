@@ -52,20 +52,20 @@ class CDXClient:
             f"https://index.commoncrawl.org/{crawl_id}-index?url={{domain}}&output=json",
             f"https://index.commoncrawl.org/collection-{crawl_id}/cdx?url={{domain}}&output=json",
         ]
-        
+
         # Add date range parameters
         params_str = ""
         if date_start:
             params_str += f"&from={date_start}"
         if date_end:
             params_str += f"&to={date_end}"
-        
+
         self.logger.info(f"Querying CDX index for {domain} in {crawl_id}...")
-        
+
         for endpoint_template in endpoints:
             query_url = endpoint_template.format(domain=domain) + params_str
             self.logger.debug(f"Trying: {query_url[:100]}...")
-            
+
             for attempt in range(self.retry_attempts):
                 try:
                     with urllib.request.urlopen(query_url, timeout=self.timeout) as response:
@@ -76,7 +76,7 @@ class CDXClient:
                             return urls
                         self.logger.warning(f"Empty result from endpoint {endpoints.index(endpoint_template) + 1}")
                         break
-                
+
                 except urllib.error.URLError as e:
                     self.logger.warning(
                         f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
@@ -88,7 +88,7 @@ class CDXClient:
                     self.logger.warning(
                         f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"
                     )
-                
+
                 if attempt < self.retry_attempts - 1:
                     delay = self.retry_delay * (2**attempt)
                     self.logger.info(f"Retrying in {delay} seconds...")
@@ -98,7 +98,7 @@ class CDXClient:
             break
         else:
             self.logger.error(f"Failed to query all CDX endpoints for {domain}")
-        
+
         return []
 
     def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
