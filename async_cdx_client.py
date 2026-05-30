@@ -51,7 +51,7 @@ class AsyncCDXClient:
         limit: int = 500,
         date_start: Optional[str] = None,
         date_end: Optional[str] = None,
-    ) -> List[str]:
+    ) -> List[Dict]:
         """
         Query CDX server for URLs matching domain and keywords.
 
@@ -64,9 +64,9 @@ class AsyncCDXClient:
             date_end: Optional end date filter (ISO format, e.g., '2020-06-30')
 
         Returns:
-            List of matching URLs
+            List of URL entries with metadata (url, filename, timestamp, offset)
         """
-        urls = []
+        entries = []
         semaphore = await self._get_semaphore()
 
         async with semaphore:
@@ -88,7 +88,7 @@ class AsyncCDXClient:
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
                             url,
-                            timeout=aiohttp.ClientTimeout(total=30),
+                            timeout=aiohttp.ClientTimeout(total=120),
                         ) as response:
                             if response.status == 200:
                                 text = await response.text()
@@ -100,16 +100,28 @@ class AsyncCDXClient:
                                             entry = json.loads(line)
                                             url = entry.get("url", "")
                                             if url:
-                                                candidate_urls.append(url)
+                                                # Store full entry with metadata (filename for WARC download)
+                                                candidate_urls.append({
+                                                    "url": url,
+                                                    "filename": entry.get("filename", ""),
+                                                    "timestamp": entry.get("timestamp", ""),
+                                                    "offset": entry.get("offset", ""),
+                                                })
                                         except json.JSONDecodeError:
                                             continue
 
-                                # Filter by keywords
-                                for url in candidate_urls:
-                                    if any(kw in url.lower() for kw in keywords):
-                                        urls.append(url)
-                                        if len(urls) >= limit:
-                                            break
+                                # Filter by keywords (skip if no keywords provided)
+                                if keywords:
+                                    filtered = []
+                                    for entry in candidate_urls:
+                                        if any(kw in entry["url"].lower() for kw in keywords):
+                                            filtered.append(entry)
+                                            if len(filtered) >= limit:
+                                                break
+                                    urls = filtered
+                                else:
+                                    # No keyword filter - return all entries up to limit
+                                    urls = candidate_urls[:limit]
 
                                 if urls:
                                     self.logger.debug(f"Found {len(urls)} URLs for {domain}")
@@ -133,7 +145,7 @@ class AsyncCDXClient:
                     self.logger.debug(f"Retrying in {delay}s")
                     await asyncio.sleep(delay)
 
-        return urls
+        return entries
 
     async def query_all_urls(
         self,
@@ -156,7 +168,7 @@ class AsyncCDXClient:
             date_end: Optional end date filter (ISO format)
 
         Returns:
-            Dict mapping (domain, crawl_id) -> list of URLs
+            Dict mapping (domain, crawl_id) -> list of URL entries
         """
         results = {}
         tasks = []
@@ -174,10 +186,10 @@ class AsyncCDXClient:
             batch = tasks[i : i + batch_size]
             batch_results = await asyncio.gather(*[task for _, task in batch])
 
-            for (domain, crawl_id), urls in zip(batch, batch_results, strict=False):
-                results[(domain, crawl_id)] = urls
-                if urls:
-                    self.logger.info(f"Found {len(urls)} URLs for {domain} in {crawl_id}")
+            for (domain, crawl_id), entries in zip(batch, batch_results, strict=False):
+                results[(domain, crawl_id)] = entries
+                if entries:
+                    self.logger.info(f"Found {len(entries)} URLs for {domain} in {crawl_id}")
 
         return results
 
@@ -198,12 +210,12 @@ class AsyncCDXClient:
 
         async def _query():
             # Use empty keywords to get all URLs
-            urls = await self.query_urls(
+            entries = await self.query_urls(
                 crawl_id, domain_pattern, keywords=[], limit=10000,
                 date_start=date_start, date_end=date_end
             )
-            # Convert to dict format matching sync client
-            return [{"url": url} for url in urls]
+            # Return entries as-is (they already have the right format)
+            return entries
 
         return asyncio.run(_query())
 
@@ -213,15 +225,12 @@ class AsyncCDXClient:
 
     def group_by_warc(self, urls: List[Dict]) -> Dict[str, List[Dict]]:
         """Group URLs by WARC file."""
-        # For async client, we need to extract WARC file from URL
-        # This is a simplified version - in production we'd parse the full CDX record
         warc_groups: Dict[str, List[Dict]] = {}
         for url_entry in urls:
-            url = url_entry.get("url", "")
-            # Use the URL itself as the key for now
-            # In a full implementation, we'd extract the WARC filename from CDX metadata
-            warc_key = url  # Placeholder - would need full CDX record
-            if warc_key not in warc_groups:
-                warc_groups[warc_key] = []
-            warc_groups[warc_key].append(url_entry)
+            # Extract the full WARC filename from the CDX record
+            warc_key = url_entry.get("filename", "")
+            if warc_key:
+                if warc_key not in warc_groups:
+                    warc_groups[warc_key] = []
+                warc_groups[warc_key].append(url_entry)
         return warc_groups

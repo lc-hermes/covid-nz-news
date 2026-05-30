@@ -19,6 +19,7 @@ Runtime options (set in settings.py):
 """
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from tqdm import tqdm
@@ -158,7 +159,7 @@ def build_database(logger) -> int:
             logger.info(f"  Spanning {len(warc_files)} WARC files")
 
             # Process WARC files
-            logger.info("  [3/4] Processing WARC files...")
+            logger.info("  [3/4] Processing WARC files with 16 threads...")
 
             # Limit if configured
             max_files = settings.crawls.max_warc_files_per_crawl
@@ -170,70 +171,76 @@ def build_database(logger) -> int:
             batch_buffer = []
             BATCH_SIZE = 100  # Flush every 100 articles
 
-            for file_idx, (filename, url_entries) in tqdm(
-                enumerate(warc_files.items(), 1),
-                total=len(warc_files),
-                desc="    WARC files",
-                leave=False,
-            ):
-                logger.info(f"    [{file_idx}/{len(warc_files)}] {filename[:50]}...")
-                logger.info(f"      Contains {len(url_entries)} COVID-related URLs")
+            def process_warc_file(args):
+                """Process a single WARC file - download, extract, return articles."""
+                file_idx, filename, url_entries = args
+                target_urls = {e["url"] for e in url_entries if e.get("url")}
 
                 # Download WARC file
                 warc_path = downloader.download(filename)
-
                 if not warc_path:
                     logger.error(f"      Failed to download {filename}")
-                    continue
+                    return file_idx, [], url_entries
 
                 # Extract articles
-                target_urls = {e["url"] for e in url_entries if e.get("url")}
                 articles = extractor.extract_from_file(warc_path, target_urls)
+                return file_idx, articles, url_entries
 
-                logger.info(f"      Extracted {len(articles)} articles")
+            # Process files in parallel with 16 threads
+            warc_items = list(warc_files.items())
+            tasks = [(i, filename, url_entries) for i, (filename, url_entries) in enumerate(warc_items, 1)]
 
-                # Process articles with batch buffering
-                for article in tqdm(articles, desc="  Processing", leave=False):
-                    url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
+            with ThreadPoolExecutor(max_workers=16) as executor:
+                futures = executor.map(process_warc_file, tasks)
 
-                    # Extract publish date from WARC timestamp (HTML parsing removed for memory efficiency)
-                    publish_date = ""
-                    # Convert WARC timestamp to ISO format if available
-                    if url_entry.get("timestamp"):
-                        ts = url_entry["timestamp"]
-                        # WARC timestamp format: 20200415123045
-                        if len(ts) >= 15:
-                            try:
-                                publish_date = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
-                            except (IndexError, ValueError):
-                                pass
+                for file_idx, articles, url_entries in tqdm(
+                    futures,
+                    total=len(warc_files),
+                    desc="    WARC files",
+                    leave=False,
+                ):
+                    logger.info(f"    [{file_idx}/{len(warc_files)}] Extracted {len(articles)} articles")
 
-                    # Add to batch buffer
-                    batch_buffer.append({
-                        "url": article["url"],
-                        "title": article["title"],
-                        "content": article["content"],
-                        "source_domain": article["source_domain"],
-                        "crawl_id": crawl_id,
-                        "timestamp": url_entry.get("timestamp", ""),
-                        "language": article["language"],
-                        "status_code": article["status_code"],
-                        "publish_date": publish_date,
-                    })
+                    # Process articles with batch buffering
+                    for article in articles:
+                        url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
 
-                    # Flush batch when full
-                    if len(batch_buffer) >= BATCH_SIZE:
-                        inserted = db.insert_batch(batch_buffer)
-                        total_articles += inserted
-                        articles_inserted += inserted
-                        batch_buffer = []
+                        # Extract publish date from WARC timestamp
+                        publish_date = ""
+                        if url_entry.get("timestamp"):
+                            ts = url_entry["timestamp"]
+                            if len(ts) >= 15:
+                                try:
+                                    publish_date = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
+                                except (IndexError, ValueError):
+                                    pass
 
-                # Flush remaining articles
-                if batch_buffer:
-                    inserted = db.insert_batch(batch_buffer)
-                    total_articles += inserted
-                    articles_inserted += inserted
-                    batch_buffer = []
+                        # Add to batch buffer
+                        batch_buffer.append({
+                            "url": article["url"],
+                            "title": article["title"],
+                            "content": article["content"],
+                            "source_domain": article["source_domain"],
+                            "crawl_id": crawl_id,
+                            "timestamp": url_entry.get("timestamp", ""),
+                            "language": article["language"],
+                            "status_code": article["status_code"],
+                            "publish_date": publish_date,
+                        })
+
+                        # Flush batch when full
+                        if len(batch_buffer) >= BATCH_SIZE:
+                            inserted = db.insert_batch(batch_buffer)
+                            total_articles += inserted
+                            articles_inserted += inserted
+                            batch_buffer = []
+
+            # Flush remaining articles
+            if batch_buffer:
+                inserted = db.insert_batch(batch_buffer)
+                total_articles += inserted
+                articles_inserted += inserted
+                batch_buffer = []
 
             # Save checkpoint after each crawl-domain pair
             progress_manager.mark_completed(crawl_id, domain_pattern, articles_inserted)
