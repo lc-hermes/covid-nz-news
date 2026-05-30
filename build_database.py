@@ -19,7 +19,7 @@ Runtime options (set in settings.py):
 """
 
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from tqdm import tqdm
@@ -159,7 +159,7 @@ def build_database(logger) -> int:
             logger.info(f"  Spanning {len(warc_files)} WARC files")
 
             # Process WARC files
-            logger.info("  [3/4] Processing WARC files with 16 threads...")
+            logger.info("  [3/4] Processing WARC files with 32 threads...")
 
             # Limit if configured
             max_files = settings.crawls.max_warc_files_per_crawl
@@ -180,26 +180,47 @@ def build_database(logger) -> int:
                 warc_path = downloader.download(filename)
                 if not warc_path:
                     logger.error(f"      Failed to download {filename}")
-                    return file_idx, [], url_entries
+                    return file_idx, filename, [], url_entries
 
                 # Extract articles
                 articles = extractor.extract_from_file(warc_path, target_urls)
-                return file_idx, articles, url_entries
+                return file_idx, filename, articles, url_entries
 
-            # Process files in parallel with 16 threads
+            # Process files in parallel with 32 threads
             warc_items = list(warc_files.items())
+
+            # Filter out already-completed WARC files
+            warc_items = [(filename, urls) for filename, urls in warc_items
+                          if not progress_manager.is_warc_completed(filename)]
+
+            if not warc_items:
+                logger.info(f"  All {len(warc_files)} WARC files already processed, skipping...")
+                progress_manager.mark_completed(crawl_id, domain_pattern, 0)
+                processed_pairs += 1
+                continue
+
+            logger.info(f"  Processing {len(warc_items)}/{len(warc_files)} WARC files ({len(warc_files) - len(warc_items)} already completed)")
+
             tasks = [(i, filename, url_entries) for i, (filename, url_entries) in enumerate(warc_items, 1)]
 
-            with ThreadPoolExecutor(max_workers=16) as executor:
-                futures = executor.map(process_warc_file, tasks)
+            logger.info(f"  Starting ThreadPoolExecutor with {len(tasks)} tasks")
 
-                for file_idx, articles, url_entries in tqdm(
-                    futures,
-                    total=len(warc_files),
-                    desc="    WARC files",
-                    leave=False,
-                ):
-                    logger.info(f"    [{file_idx}/{len(warc_files)}] Extracted {len(articles)} articles")
+            with ThreadPoolExecutor(max_workers=32) as executor:
+                # Submit all tasks
+                futures = [executor.submit(process_warc_file, task) for task in tasks]
+
+                # Process results as they complete
+                for future in as_completed(futures):
+                    file_idx, filename, articles, url_entries = future.result()
+                    logger.info(f"    [{file_idx}/{len(tasks)}] Extracted {len(articles)} articles")
+                    logger.info(f"    Processing WARC file: {filename[:100]}...")
+
+                    # Mark this WARC file as completed immediately
+                    try:
+                        success = progress_manager.mark_warc_completed(filename)
+                        logger.info(f"    Marked WARC file as completed: {success}")
+                    except Exception as e:
+                        logger.error(f"    Failed to mark WARC file as completed: {e}")
 
                     # Process articles with batch buffering
                     for article in articles:
