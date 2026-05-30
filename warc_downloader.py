@@ -86,6 +86,31 @@ class WARCDownloader:
                 self.logger.info(f"Downloaded {downloaded:,} bytes")
                 return cache_path
 
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    # Rate limited - respect Retry-After header or use exponential backoff
+                    retry_after = e.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            wait_seconds = int(retry_after)
+                        except ValueError:
+                            wait_seconds = 60
+                        self.logger.warning(
+                            f"Rate limited (429). Waiting {wait_seconds} seconds (from Retry-After header)..."
+                        )
+                        time.sleep(wait_seconds)
+                    else:
+                        # No Retry-After header, use exponential backoff with larger delay
+                        delay = self.retry_delay * (2**attempt) * 5  # 5x larger for rate limits
+                        self.logger.warning(
+                            f"Rate limited (429). Waiting {delay} seconds..."
+                        )
+                        time.sleep(delay)
+                    continue  # Retry after waiting
+
+                self.logger.warning(
+                    f"Attempt {attempt + 1}/{self.retry_attempts} failed: HTTP {e.code}: {e}"
+                )
             except urllib.error.URLError as e:
                 self.logger.warning(
                     f"Attempt {attempt + 1}/{self.retry_attempts} failed: {type(e).__name__}: {e}"

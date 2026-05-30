@@ -154,8 +154,8 @@ class Settings:
     crawls: CrawlConfig = CrawlConfig()
 
     # Runtime configuration (set via settings.py, not CLI)
-    resume: bool = False  # Resume from checkpoint
-    use_async: bool = False  # Use async CDX client (10x faster)
+    resume: bool = True  # Resume from checkpoint
+    use_async: bool = False  # Use async CDX client (experimental)
 
     def __repr__(self) -> str:
         return (

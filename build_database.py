@@ -19,6 +19,7 @@ Runtime options (set in settings.py):
 """
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from tqdm import tqdm
@@ -158,7 +159,7 @@ def build_database(logger) -> int:
             logger.info(f"  Spanning {len(warc_files)} WARC files")
 
             # Process WARC files
-            logger.info("  [3/4] Processing WARC files...")
+            logger.info("  [3/4] Processing WARC files with 32 threads...")
 
             # Limit if configured
             max_files = settings.crawls.max_warc_files_per_crawl
@@ -170,70 +171,97 @@ def build_database(logger) -> int:
             batch_buffer = []
             BATCH_SIZE = 100  # Flush every 100 articles
 
-            for file_idx, (filename, url_entries) in tqdm(
-                enumerate(warc_files.items(), 1),
-                total=len(warc_files),
-                desc="    WARC files",
-                leave=False,
-            ):
-                logger.info(f"    [{file_idx}/{len(warc_files)}] {filename[:50]}...")
-                logger.info(f"      Contains {len(url_entries)} COVID-related URLs")
+            def process_warc_file(args):
+                """Process a single WARC file - download, extract, return articles."""
+                file_idx, filename, url_entries = args
+                target_urls = {e["url"] for e in url_entries if e.get("url")}
 
                 # Download WARC file
                 warc_path = downloader.download(filename)
-
                 if not warc_path:
                     logger.error(f"      Failed to download {filename}")
-                    continue
+                    return file_idx, filename, [], url_entries
 
                 # Extract articles
-                target_urls = {e["url"] for e in url_entries if e.get("url")}
                 articles = extractor.extract_from_file(warc_path, target_urls)
+                return file_idx, filename, articles, url_entries
 
-                logger.info(f"      Extracted {len(articles)} articles")
+            # Process files in parallel with 32 threads
+            warc_items = list(warc_files.items())
 
-                # Process articles with batch buffering
-                for article in tqdm(articles, desc="  Processing", leave=False):
-                    url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
+            # Filter out already-completed WARC files
+            warc_items = [(filename, urls) for filename, urls in warc_items
+                          if not progress_manager.is_warc_completed(filename)]
 
-                    # Extract publish date from WARC timestamp (HTML parsing removed for memory efficiency)
-                    publish_date = ""
-                    # Convert WARC timestamp to ISO format if available
-                    if url_entry.get("timestamp"):
-                        ts = url_entry["timestamp"]
-                        # WARC timestamp format: 20200415123045
-                        if len(ts) >= 15:
-                            try:
-                                publish_date = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
-                            except (IndexError, ValueError):
-                                pass
+            if not warc_items:
+                logger.info(f"  All {len(warc_files)} WARC files already processed, skipping...")
+                progress_manager.mark_completed(crawl_id, domain_pattern, 0)
+                processed_pairs += 1
+                continue
 
-                    # Add to batch buffer
-                    batch_buffer.append({
-                        "url": article["url"],
-                        "title": article["title"],
-                        "content": article["content"],
-                        "source_domain": article["source_domain"],
-                        "crawl_id": crawl_id,
-                        "timestamp": url_entry.get("timestamp", ""),
-                        "language": article["language"],
-                        "status_code": article["status_code"],
-                        "publish_date": publish_date,
-                    })
+            logger.info(f"  Processing {len(warc_items)}/{len(warc_files)} WARC files ({len(warc_files) - len(warc_items)} already completed)")
 
-                    # Flush batch when full
-                    if len(batch_buffer) >= BATCH_SIZE:
-                        inserted = db.insert_batch(batch_buffer)
-                        total_articles += inserted
-                        articles_inserted += inserted
-                        batch_buffer = []
+            tasks = [(i, filename, url_entries) for i, (filename, url_entries) in enumerate(warc_items, 1)]
 
-                # Flush remaining articles
-                if batch_buffer:
-                    inserted = db.insert_batch(batch_buffer)
-                    total_articles += inserted
-                    articles_inserted += inserted
-                    batch_buffer = []
+            logger.info(f"  Starting ThreadPoolExecutor with {len(tasks)} tasks")
+
+            with ThreadPoolExecutor(max_workers=32) as executor:
+                # Submit all tasks
+                futures = [executor.submit(process_warc_file, task) for task in tasks]
+
+                # Process results as they complete
+                for future in as_completed(futures):
+                    file_idx, filename, articles, url_entries = future.result()
+                    logger.info(f"    [{file_idx}/{len(tasks)}] Extracted {len(articles)} articles")
+                    logger.info(f"    Processing WARC file: {filename[:100]}...")
+
+                    # Mark this WARC file as completed immediately
+                    try:
+                        success = progress_manager.mark_warc_completed(filename)
+                        logger.info(f"    Marked WARC file as completed: {success}")
+                    except Exception as e:
+                        logger.error(f"    Failed to mark WARC file as completed: {e}")
+
+                    # Process articles with batch buffering
+                    for article in articles:
+                        url_entry = next((e for e in url_entries if e.get("url") == article["url"]), {})
+
+                        # Extract publish date from WARC timestamp
+                        publish_date = ""
+                        if url_entry.get("timestamp"):
+                            ts = url_entry["timestamp"]
+                            if len(ts) >= 15:
+                                try:
+                                    publish_date = f"{ts[0:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
+                                except (IndexError, ValueError):
+                                    pass
+
+                        # Add to batch buffer
+                        batch_buffer.append({
+                            "url": article["url"],
+                            "title": article["title"],
+                            "content": article["content"],
+                            "source_domain": article["source_domain"],
+                            "crawl_id": crawl_id,
+                            "timestamp": url_entry.get("timestamp", ""),
+                            "language": article["language"],
+                            "status_code": article["status_code"],
+                            "publish_date": publish_date,
+                        })
+
+                        # Flush batch when full
+                        if len(batch_buffer) >= BATCH_SIZE:
+                            inserted = db.insert_batch(batch_buffer)
+                            total_articles += inserted
+                            articles_inserted += inserted
+                            batch_buffer = []
+
+            # Flush remaining articles
+            if batch_buffer:
+                inserted = db.insert_batch(batch_buffer)
+                total_articles += inserted
+                articles_inserted += inserted
+                batch_buffer = []
 
             # Save checkpoint after each crawl-domain pair
             progress_manager.mark_completed(crawl_id, domain_pattern, articles_inserted)

@@ -15,6 +15,7 @@ class ProgressState:
     """Represents the current progress of the database build."""
 
     completed_crawl_domain_pairs: List[str] = field(default_factory=list)
+    completed_warc_files: List[str] = field(default_factory=list)
     total_articles_inserted: int = 0
     last_updated: str = ""
 
@@ -22,6 +23,7 @@ class ProgressState:
         """Convert to dictionary for JSON serialization."""
         return {
             "completed_crawl_domain_pairs": self.completed_crawl_domain_pairs,
+            "completed_warc_files": self.completed_warc_files,
             "total_articles_inserted": self.total_articles_inserted,
             "last_updated": self.last_updated,
         }
@@ -154,6 +156,42 @@ class ProgressManager:
         self.state.last_updated = datetime.now().isoformat()
 
         return self.save(self.state)
+
+    def mark_warc_completed(self, warc_filename: str) -> bool:
+        """
+        Mark a WARC file as completed.
+
+        Args:
+            warc_filename: WARC file path/hash
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.state:
+            self.state = ProgressState()
+
+        if warc_filename not in self.state.completed_warc_files:
+            self.state.completed_warc_files.append(warc_filename)
+            from datetime import datetime
+
+            self.state.last_updated = datetime.now().isoformat()
+
+        return self.save(self.state)
+
+    def is_warc_completed(self, warc_filename: str) -> bool:
+        """
+        Check if a WARC file has already been processed.
+
+        Args:
+            warc_filename: WARC file path/hash
+
+        Returns:
+            True if already completed, False otherwise
+        """
+        if not self.state:
+            return False
+
+        return warc_filename in self.state.completed_warc_files
 
     def get_remaining_work(self, all_crawls: List[str], all_domains: List[str]) -> List[tuple]:
         """
