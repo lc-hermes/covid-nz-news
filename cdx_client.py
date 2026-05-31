@@ -104,7 +104,7 @@ class CDXClient:
     def filter_keywords_url_only(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
         """
         Filter URLs that contain any of the specified keywords (URL-only filtering).
-        
+
         DEPRECATED: Use filter_keywords_content_based for better recall.
         This method only checks URL paths, missing articles where keywords appear in content only.
 
@@ -123,7 +123,7 @@ class CDXClient:
 
         self.logger.info(f"Filtered to {len(covid_urls)} URLs matching keywords (URL-only)")
         return covid_urls
-    
+
     def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
         """
         DEPRECATED: Renamed to filter_keywords_url_only.

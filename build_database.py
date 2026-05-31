@@ -177,7 +177,7 @@ def build_database(logger) -> int:
 
             def process_warc_file(args):
                 """Process a single WARC file - download, extract, return articles."""
-                file_idx, filename, url_entries = args
+                file_idx, filename, url_entries, crawl_id, domain = args
                 target_urls = {e["url"] for e in url_entries if e.get("url")}
 
                 # Download WARC file
@@ -186,10 +186,10 @@ def build_database(logger) -> int:
                     logger.error(f"      Failed to download {filename}")
                     error_tracker.track(
                         "download_failed",
-                        f"Failed to download WARC file",
+                        "Failed to download WARC file",
                         filename=filename,
                         crawl_id=crawl_id,
-                        domain=domain_pattern,
+                        domain=domain,
                     )
                     return file_idx, filename, [], url_entries
 
@@ -212,7 +212,7 @@ def build_database(logger) -> int:
 
             logger.info(f"  Processing {len(warc_items)}/{len(warc_files)} WARC files ({len(warc_files) - len(warc_items)} already completed)")
 
-            tasks = [(i, filename, url_entries) for i, (filename, url_entries) in enumerate(warc_items, 1)]
+            tasks = [(i, filename, url_entries, crawl_id, domain_pattern) for i, (filename, url_entries) in enumerate(warc_items, 1)]
 
             logger.info(f"  Starting ThreadPoolExecutor with {len(tasks)} tasks")
 
