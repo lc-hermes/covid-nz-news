@@ -1,5 +1,5 @@
 # Python
-__pycache__/
+__pycache__/*
 *.py[cod]
 *$py.class
 *.so
@@ -13,11 +13,14 @@ covid_nz_news.db
 warc_cache/
 *.db
 *.sqlite
+covid_nz_news_delta/
 
 # Logs and cache
 *.log
 *.cache
-__pycache__/
+__pycache__/*
+build_log*.txt
+build_*.log
 
 # IDE
 .idea/
@@ -35,3 +38,12 @@ Thumbs.db
 
 # JSON results
 *.json
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Images
+*.png
+*.jpg

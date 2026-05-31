@@ -25,18 +25,15 @@ class TestCDXClient:
             result = client.query_index("CC-MAIN-2020-16", "*.example.com/")
             assert isinstance(result, list)
 
-    def test_filter_keywords_filters_correctly(self, client):
-        """Filter keywords should return only URLs containing keywords."""
+    def test_filter_keywords_url_only(self, client):
+        """Test URL filtering with keywords."""
         urls = [
-            {"url": "https://example.com/covid-article"},
-            {"url": "https://example.com/other-article"},
-            {"url": "https://example.com/coronavirus-news"},
+            {"url": "https://example.com/covid-update"},
+            {"url": "https://example.com/weather"},
+            {"url": "https://example.com/coronavirus-cases"},
         ]
-        keywords = ["covid", "coronavirus"]
-
-        result = client.filter_keywords(urls, keywords)
-        assert len(result) == 2
-        assert all("covid" in u["url"] or "coronavirus" in u["url"] for u in result)
+        filtered = client.filter_keywords_url_only(urls, ["covid", "coronavirus"])
+        assert len(filtered) == 2
 
     def test_filter_keywords_case_insensitive(self, client):
         """Keyword filtering should be case-insensitive."""

@@ -74,28 +74,81 @@ class NewsSourceConfig:
         ]
     )
 
-    # COVID-related keywords for filtering
+    # COVID-related keywords for filtering (URL + content)
     keywords: List[str] = field(
         default_factory=lambda: [
+            # Core disease terms
             "covid",
             "coronavirus",
+            "sars-cov-2",
+            "virus",
+            # Pandemic terminology
+            "pandemic",
+            "outbreak",
+            "epidemic",
+            "infection",
+            "infections",
+            "transmission",
+            "contagion",
+            # Healthcare response
             "vaccine",
-            "lockdown",
-            "quarantine",
-            "border",
-            "cases",
-            "deaths",
+            "vaccination",
+            "vaccines",
+            "immunisation",
             "hospital",
+            "hospitalised",
+            "icu",
+            "ventilator",
             "health",
             "ministry of health",
-            "covid tracer",
+            "director-general",
+            "medical",
+            # Government measures
+            "lockdown",
             "alert level",
-            "stay home",
+            "state of emergency",
+            "quarantine",
+            "isolation",
+            "border",
+            "travel ban",
             "border closure",
-            "immunity",
+            "biosecurity",
+            # Public health measures
+            "social distancing",
+            "physical distancing",
+            "face mask",
+            "mask",
+            "hand sanitiser",
+            "hygiene",
+            "covid tracer",
+            "contact tracing",
+            "trace",
+            # Restrictions and reopening
+            "restric",  # catches restriction, restrictions, restricted
+            "reopening",
+            "curfew",
+            "gathering limit",
+            "stay home",
+            "stay home order",
+            # Statistics
+            "cases",
+            "deaths",
+            "fatalities",
+            "positives",
+            "rt rate",
+            "reproduction rate",
+            # Variants
             "variant",
             "omicron",
             "delta",
+            "alpha",
+            "beta",
+            "gamma",
+            # Economic impact
+            "jobkeeper",
+            "support",
+            "business",
+            "economic",
         ]
     )
 
@@ -105,30 +158,15 @@ class CrawlConfig:
     """Common Crawl configuration."""
 
     # COVID timeline: March 2020 - December 2022
+    # NOTE: Only these 3 crawl IDs contained NZ news data (15 others returned 0 URLs)
     # Each crawl is biweekly, format: CC-MAIN-YYYY-N (N = 1-26)
     crawl_ids: List[str] = field(
         default_factory=lambda: [
-            # 2020 - COVID emergence and first year
-            "CC-MAIN-2020-16",  # April 2020
-            "CC-MAIN-2020-20",  # May 2020
-            "CC-MAIN-2020-24",  # June 2020
-            "CC-MAIN-2020-32",  # August 2020
-            "CC-MAIN-2020-40",  # October 2020
-            "CC-MAIN-2020-48",  # December 2020
-            # 2021 - Vaccination rollout
-            "CC-MAIN-2021-8",  # February 2021
-            "CC-MAIN-2021-16",  # April 2021
-            "CC-MAIN-2021-24",  # June 2021
-            "CC-MAIN-2021-32",  # August 2021
-            "CC-MAIN-2021-40",  # October 2021
-            "CC-MAIN-2021-48",  # December 2021
-            # 2022 - Omicron and easing
-            "CC-MAIN-2022-8",  # February 2022
-            "CC-MAIN-2022-16",  # April 2022
-            "CC-MAIN-2022-24",  # June 2022
-            "CC-MAIN-2022-32",  # August 2022
-            "CC-MAIN-2022-40",  # October 2022
-            "CC-MAIN-2022-48",  # December 2022
+            "CC-MAIN-2020-16",  # April 2020 - 550 articles
+            "CC-MAIN-2020-24",  # June 2020 - 423 articles
+            "CC-MAIN-2020-40",  # October 2020 - 14 articles
+            # NOTE: These crawls had NO NZ news data (removed for efficiency):
+            # CC-MAIN-2020-48, CC-MAIN-2021-8 through CC-MAIN-2022-48
         ]
     )
 

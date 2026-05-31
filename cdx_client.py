@@ -101,9 +101,12 @@ class CDXClient:
 
         return []
 
-    def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
+    def filter_keywords_url_only(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
         """
-        Filter URLs that contain any of the specified keywords.
+        Filter URLs that contain any of the specified keywords (URL-only filtering).
+
+        DEPRECATED: Use filter_keywords_content_based for better recall.
+        This method only checks URL paths, missing articles where keywords appear in content only.
 
         Args:
             urls: List of URL entries from CDX query
@@ -118,8 +121,16 @@ class CDXClient:
             if any(keyword.lower() in url for keyword in keywords):
                 covid_urls.append(url_entry)
 
-        self.logger.info(f"Filtered to {len(covid_urls)} URLs matching keywords")
+        self.logger.info(f"Filtered to {len(covid_urls)} URLs matching keywords (URL-only)")
         return covid_urls
+
+    def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
+        """
+        DEPRECATED: Renamed to filter_keywords_url_only.
+        This method only checks URL paths, missing articles where keywords appear in content only.
+        Use filter_keywords_content_based for better recall.
+        """
+        return self.filter_keywords_url_only(urls, keywords)
 
     def group_by_warc(self, urls: List[Dict]) -> Dict[str, List[Dict]]:
         """

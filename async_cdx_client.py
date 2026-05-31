@@ -219,9 +219,56 @@ class AsyncCDXClient:
 
         return asyncio.run(_query())
 
-    def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
-        """Filter URLs by keywords."""
+    def filter_keywords_url_only(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
+        """
+        Filter URLs by keywords (URL-only filtering).
+
+        DEPRECATED: Use filter_keywords_content_based for better recall.
+        This method only checks URL paths, missing articles where keywords appear in content only.
+        """
         return [url for url in urls if any(kw in url.get("url", "").lower() for kw in keywords)]
+
+    def filter_keywords_content_based(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
+        """
+        Filter URLs by keywords (content-based filtering).
+
+        This method downloads ALL URLs from the WARC files, then filters based on
+        the actual content of the page. This significantly improves recall compared
+        to URL-only filtering, as it catches articles where keywords appear in the
+        body text but not in the URL path.
+
+        Args:
+            urls: List of URL entries from CDX query
+            keywords: List of keywords to search for in page content
+
+        Returns:
+            Filtered list of URLs where keywords appear in the page content
+        """
+        from warc_extractor import extract_content_from_url  # type: ignore
+
+        filtered_urls = []
+        for url_entry in urls:
+            url = url_entry.get("url", "")
+            try:
+                # Extract content from WARC
+                content = extract_content_from_url(url)
+                # Check if any keyword appears in the content
+                if content and any(kw.lower() in content.lower() for kw in keywords):
+                    filtered_urls.append(url_entry)
+            except Exception as e:
+                self.logger.debug(f"Failed to extract content from {url}: {e}")
+                # Skip this URL if extraction fails
+
+        self.logger.info(f"Content-based filtering: {len(filtered_urls)}/{len(urls)} URLs matched keywords")
+        return filtered_urls
+
+    def filter_keywords(self, urls: List[Dict], keywords: List[str]) -> List[Dict]:
+        """
+        DEPRECATED: Renamed to filter_keywords_url_only.
+        This method only checks URL paths, missing articles where keywords appear in content only.
+        Use filter_keywords_content_based for better recall.
+        """
+        return self.filter_keywords_url_only(urls, keywords)
 
     def group_by_warc(self, urls: List[Dict]) -> Dict[str, List[Dict]]:
         """Group URLs by WARC file."""
