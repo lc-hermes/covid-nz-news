@@ -27,6 +27,7 @@ from tqdm import tqdm
 from async_cdx_client import AsyncCDXClient
 from cdx_client import CDXClient
 from delta_database import DeltaNewsDatabase
+from error_tracker import ErrorTracker
 from logger import setup_logging
 from progress import ProgressManager
 from settings import settings
@@ -66,6 +67,9 @@ def build_database(logger) -> int:
     # Initialize components
     db = DeltaNewsDatabase(settings.database.path, logger)
     db.init_table()
+
+    # Initialize error tracker
+    error_tracker = ErrorTracker(logger)
 
     # Initialize CDX client based on mode
     if settings.use_async:
@@ -180,6 +184,13 @@ def build_database(logger) -> int:
                 warc_path = downloader.download(filename)
                 if not warc_path:
                     logger.error(f"      Failed to download {filename}")
+                    error_tracker.track(
+                        "download_failed",
+                        f"Failed to download WARC file",
+                        filename=filename,
+                        crawl_id=crawl_id,
+                        domain=domain_pattern,
+                    )
                     return file_idx, filename, [], url_entries
 
                 # Extract articles
@@ -283,6 +294,9 @@ def build_database(logger) -> int:
         logger.info(f"Covid-related URLs: {total_covid_urls:,}")
         logger.info(f"Articles extracted: {total_articles:,}")
         logger.info(f"Total in database: {db.get_count():,}")
+
+        # Report errors
+        error_tracker.report()
 
         # Statistics by source
         logger.info("\nArticles by news source:")
